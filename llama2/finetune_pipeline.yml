@@ -3,30 +3,37 @@ type: pipeline
 
 experiment_name: llma2-fine-tuning
 description: llma2-fine-tuning
+inputs:
+  num_examples: 20000
+  model_dir: 
+    path: azureml://registries/azureml-meta/models/Llama-2-13b/versions/5
+outputs:
+  # map the output of the fine tuning job to the output of pipeline job so that we can easily register the fine tuned model
+  # registering the model is required to deploy the model to an online or batch endpoint
+  trained_model:
 jobs:
   train:
     type: command
     code: ./
     command: >-
-      accelerate launch  --config_file launch.yml main.py
+      python main.py
       --model_dir ${{inputs.model_dir}}
       --epochs ${{inputs.epochs}}
+      --num_examples ${{inputs.num_examples}}
       --trained_model ${{outputs.output_dir}}
     inputs:
       epochs: 1
-      model_dir: 
-        path: azureml://registries/azureml-meta/models/Llama-2-13b/versions/5
+      num_examples: ${{parent.inputs.num_examples}}
+      model_dir: ${{parent.inputs.model_dir}} 
     environment: 
       conda_file: ./conda.yml
       image: mcr.microsoft.com/azureml/curated/acft-hf-nlp-gpu
     outputs:
-      output_dir:
-        type: uri_folder
-        path: azureml://datastores/workspaceblobstore/paths/azureml/
-    compute: azureml:NC48adsA100
+      output_dir: ${{parent.outputs.trained_model}}
+    compute: azureml:NC96adsA100
 
-    # distribution:
-    #   type: pytorch
-    #   process_count_per_instance: 1
-    # resources:
-    #   instance_count: 2
+    distribution:
+      type: pytorch
+      process_count_per_instance: 4
+    resources:
+      instance_count: 1
