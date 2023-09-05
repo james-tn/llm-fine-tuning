@@ -18,18 +18,37 @@ from peft import LoraConfig, PeftModel
 from trl import SFTTrainer, DataCollatorForCompletionOnlyLM
 import json
 from datasets import Dataset
+
+#Function to load model for scoring 
+
 pipeline_artifact_name = "pipeline"
+model_name="llama2_13b_fine_tuned"
+
 class LAMA2Predict(mlflow.pyfunc.PythonModel):
   
   def load_context(self, context):
-    device = 0 if torch.cuda.is_available() else -1
-    self.pipeline = pipeline("text-classification", context.artifacts[pipeline_artifact_name], device=device)
+    device_map = {"": 0}
+    artifact_path = f"{model_name}/artifacts/trained_model"
+    model = AutoModelForCausalLM.from_pretrained(
+        artifact_path,
+        local_files_only=True,
+        low_cpu_mem_usage=True,
+        return_dict=True,
+        torch_dtype=torch.float16,
+        device_map=device_map,
+    )
+    tokenizer = AutoTokenizer.from_pretrained(
+        artifact_path,
+        local_files_only=True,
+        device_map=device_map
+    )
+    self.pipeline = pipeline(task="text-generation", model=model, tokenizer=tokenizer)
     
   def predict(self, context, model_input): 
     texts = model_input[model_input.columns[0]].to_list()
-    pipe = self.pipeline(texts, truncation=True, batch_size=8)
-    labels = [prediction['label'] for prediction in pipe]
-    return pd.Series(labels)
+    max_length = 100
+    result = self.pipeline(texts, max_length=max_length)
+    return result
 
 def parse_args():
     # setup arg parser
@@ -57,7 +76,6 @@ def main(args):
     print("trained model path", trained_model)
     print("Model dir: ", os.listdir(os.path.join(PATH,"data", "model")) )
 
-    print("Model dir: ", os.listdir(os.path.join(PATH,"data", "model")) )
     rank = int(os.environ.get('RANK'))
     print("rank ", rank)
 
@@ -351,7 +369,7 @@ def main(args):
             tokenizer.save_pretrained(model_output_dir)
             mlflow.pyfunc.log_model(artifacts={pipeline_artifact_name: model_output_dir}, artifact_path=model_artifact_path, python_model=LAMA2Predict())
             model_uri = f"runs:/{run.info.run_id}/{model_artifact_path}"
-            mlflow.register_model(model_uri, name = "llama2_13b_fine_tuned",await_registration_for=1800)
+            mlflow.register_model(model_uri, name = model_name,await_registration_for=1800)
 
 
     # Train model
