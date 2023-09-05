@@ -45,9 +45,9 @@ class LAMA2Predict(mlflow.pyfunc.PythonModel):
     self.pipeline = pipeline(task="text-generation", model=model, tokenizer=tokenizer)
     
   def predict(self, context, model_input): 
-    texts = model_input[model_input.columns[0]].to_list()
-    max_length = 100
-    result = self.pipeline(texts, max_length=max_length)
+    texts = model_input['text']
+    max_length = model_input['max_length']
+    result = self.pipeline(texts, max_new_tokens=max_length)
     return result
 
 def parse_args():
