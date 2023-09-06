@@ -123,7 +123,7 @@ def main(args):
     output_dir = "./results"
 
     # Number of training epochs
-    num_train_epochs = 1
+    num_train_epochs = args.epochs
 
     # Enable fp16/bf16 training (set bf16 to True with an A100)
     fp16 = False
