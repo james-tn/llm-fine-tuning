@@ -10,6 +10,7 @@ from transformers import (
     BitsAndBytesConfig,
     HfArgumentParser,
     TrainingArguments,
+    GenerationConfig,
     pipeline,
     logging,
     
@@ -57,6 +58,7 @@ def run(raw_data):
     model_input = json.loads(raw_data)["data"]
     texts = model_input['text']
     max_length = model_input['max_length']
-    result = scoring_pipeline(texts, max_new_tokens=max_length)
+    gen_config = GenerationConfig(max_new_tokens=max_length, temperature= 0.8)
+    result = scoring_pipeline(texts, generation_config=gen_config)
     return result
 

@@ -4,7 +4,7 @@ type: pipeline
 experiment_name: llma2-fine-tuning
 description: llma2-fine-tuning
 inputs:
-  num_examples: 2000 #update this to the number of examples you want to use for fine tuning
+  num_examples: 56000 #update this to the number of examples you want to use for fine tuning
   model_name: llama2_13b_fine_tuned
   model_dir: 
     path: azureml://registries/azureml-meta/models/Llama-2-13b/versions/5
@@ -33,10 +33,10 @@ jobs:
       image: mcr.microsoft.com/azureml/curated/acft-hf-nlp-gpu
     outputs:
       output_dir: ${{parent.outputs.trained_model}}
-    compute: azureml:NC48adsA100 #update NC48adsA100 to the name of your compute target 
+    compute: azureml:NC96adsA100 #update NC48adsA100 to the name of your compute target 
 
     distribution:
       type: pytorch
-      process_count_per_instance: 2 #update this to the number of GPUs on your compute target
+      process_count_per_instance: 4 #update this to the number of GPUs on your compute target
     resources:
       instance_count: 1 #update this to the number of nodes in your cluster

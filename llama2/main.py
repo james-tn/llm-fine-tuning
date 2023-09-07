@@ -368,6 +368,7 @@ def main(args):
             tokenizer.padding_side = "right"
             model.save_pretrained(model_output_dir)
             tokenizer.save_pretrained(model_output_dir)
+            os.environ["AZUREML_ARTIFACTS_DEFAULT_TIMEOUT"] = "1800" #give time for model to be registered
             mlflow.pyfunc.log_model(artifacts={pipeline_artifact_name: model_output_dir}, artifact_path=model_artifact_path, python_model=LAMA2Predict(model_name))
             model_uri = f"runs:/{run.info.run_id}/{model_artifact_path}"
             mlflow.register_model(model_uri, name = model_name,await_registration_for=1800)
