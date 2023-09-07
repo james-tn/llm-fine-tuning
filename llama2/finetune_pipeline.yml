@@ -5,6 +5,7 @@ experiment_name: llma2-fine-tuning
 description: llma2-fine-tuning
 inputs:
   num_examples: 2000 #update this to the number of examples you want to use for fine tuning
+  model_name: llama2_13b_fine_tuned
   model_dir: 
     path: azureml://registries/azureml-meta/models/Llama-2-7b/versions/5
 outputs:
@@ -21,10 +22,12 @@ jobs:
       --epochs ${{inputs.epochs}}
       --num_examples ${{inputs.num_examples}}
       --trained_model ${{outputs.output_dir}}
+      --model_name ${{inputs.model_name}}
     inputs:
       epochs: 1
       num_examples: ${{parent.inputs.num_examples}}
       model_dir: ${{parent.inputs.model_dir}} 
+      model_name: ${{parent.inputs.model_name}}
     environment: 
       conda_file: ./conda.yml
       image: mcr.microsoft.com/azureml/curated/acft-hf-nlp-gpu

@@ -22,13 +22,14 @@ from datasets import Dataset
 #Function to load model for scoring 
 
 pipeline_artifact_name = "pipeline"
-model_name="llama2_13b_fine_tuned"
+
 
 class LAMA2Predict(mlflow.pyfunc.PythonModel):
-  
+  def __init__(self, model_name):
+    self.model_name = model_name
   def load_context(self, context):
     device_map = {"": 0}
-    artifact_path = f"{model_name}/artifacts/trained_model"
+    artifact_path = f"{self.model_name}/artifacts/trained_model"
     model = AutoModelForCausalLM.from_pretrained(
         artifact_path,
         local_files_only=True,
@@ -59,7 +60,7 @@ def parse_args():
     parser.add_argument("--model_dir", type=str)
     parser.add_argument("--epochs", type=int, default=1)
     parser.add_argument("--num_examples", type=int, default=1000)
-
+    parser.add_argument("--model_name", type=str)
     parser.add_argument("--trained_model", type=str, default="trained_model")
     # parse args
     args = parser.parse_args()
@@ -73,13 +74,13 @@ def main(args):
     PATH = args.model_dir
     num_examples = args.num_examples
     trained_model = args.trained_model
+    model_name = args.model_name
     print("trained model path", trained_model)
     print("Model dir: ", os.listdir(os.path.join(PATH,"data", "model")) )
 
     rank = int(os.environ.get('RANK'))
     print("rank ", rank)
 
-    print("master port", os.environ.get('MASTER_PORT'))
     
     # The instruction dataset to use
 
@@ -194,7 +195,6 @@ def main(args):
     device_map = {'': local_rank}
     print("device map ", device_map)
 
-    # dataset = load_dataset(dataset_name, split="train")
 
     with open("data/alpaca_data.json", "r") as file:    
         list_data_dict = json.load(file)
@@ -256,13 +256,6 @@ def main(args):
             print("Your GPU supports bfloat16: accelerate training with bf16=True")
             print("=" * 80)
 
-    # Load base model
-    # model = AutoModelForCausalLM.from_pretrained(
-    #     model_name,
-    #     quantization_config=bnb_config,
-    #     device_map=device_map
-    # )
-
     model = AutoModelForCausalLM.from_pretrained(
         os.path.join(PATH,"data", "model"),
         local_files_only=True,
@@ -296,6 +289,7 @@ def main(args):
         output_dir=output_dir,
         num_train_epochs=num_train_epochs,
         per_device_train_batch_size=per_device_train_batch_size,
+        per_device_eval_batch_size=per_device_eval_batch_size,
         gradient_accumulation_steps=gradient_accumulation_steps,
         optim=optim,
         save_steps=save_steps,
@@ -309,6 +303,7 @@ def main(args):
         warmup_ratio=warmup_ratio,
         group_by_length=group_by_length,
         lr_scheduler_type=lr_scheduler_type,
+        evaluation_strategy="epoch",
         # report_to="tensorboard"
     )
     training_arguments.ddp_find_unused_parameters = False
@@ -316,10 +311,14 @@ def main(args):
     response_template_ids = tokenizer.encode(response_template_with_context, add_special_tokens=False)[2:]  # Now we have it like in the dataset texts: `[2277, 29937, 4007, 22137, 29901]`
 
     data_collator = DataCollatorForCompletionOnlyLM(response_template_ids, tokenizer=tokenizer)
+    split_ds = dataset.train_test_split(test_size=0.1, seed=42)
+    train_ds = split_ds["train"]
+    eval_ds = split_ds["test"]
     # Set supervised fine-tuning parameters
     trainer = SFTTrainer(
         model=model,
-        train_dataset=dataset,
+        train_dataset=train_ds,
+        eval_dataset=eval_ds,
         peft_config=peft_config,
         # dataset_text_field="text",
         tokenizer=tokenizer,
@@ -332,10 +331,12 @@ def main(args):
     
     with mlflow.start_run() as run:
         trainer.train()
+        import math
+        eval_results = trainer.evaluate()
+        mlflow.log_metric("perplexity",math.exp(eval_results['eval_loss']))
         trainer.model.save_pretrained(new_model)
         model_output_dir = "trained_model"
-        # trainer.model.save_pretrained(model_output_dir)
-        model_artifact_path = "llama2_13b_fine_tuned"
+        model_artifact_path = model_name
         # Empty VRAM
         del model
         # del pipe
@@ -367,14 +368,10 @@ def main(args):
             tokenizer.padding_side = "right"
             model.save_pretrained(model_output_dir)
             tokenizer.save_pretrained(model_output_dir)
-            mlflow.pyfunc.log_model(artifacts={pipeline_artifact_name: model_output_dir}, artifact_path=model_artifact_path, python_model=LAMA2Predict())
+            mlflow.pyfunc.log_model(artifacts={pipeline_artifact_name: model_output_dir}, artifact_path=model_artifact_path, python_model=LAMA2Predict(model_name))
             model_uri = f"runs:/{run.info.run_id}/{model_artifact_path}"
             mlflow.register_model(model_uri, name = model_name,await_registration_for=1800)
 
-
-    # Train model
-
-    # Save trained model
 
 
 if __name__ == "__main__":
