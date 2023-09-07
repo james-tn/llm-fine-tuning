@@ -5,9 +5,10 @@ experiment_name: llma2-fine-tuning
 description: llma2-fine-tuning
 inputs:
   num_examples: 56000 #update this to the number of examples you want to use for fine tuning
-  model_name: llama2_13b_fine_tuned
+  model_name: llama2_13b_chat_fine_tuned
+  chat_model: True #whether to use the chat model or base model. The format of input data is different between the two models
   model_dir: 
-    path: azureml://registries/azureml-meta/models/Llama-2-13b/versions/5
+    path: azureml://registries/azureml-meta/models/Llama-2-13b-chat/versions/6
 outputs:
   # map the output of the fine tuning job to the output of pipeline job so that we can easily register the fine tuned model
   # registering the model is required to deploy the model to an online or batch endpoint
@@ -23,11 +24,13 @@ jobs:
       --num_examples ${{inputs.num_examples}}
       --trained_model ${{outputs.output_dir}}
       --model_name ${{inputs.model_name}}
+      --chat_model ${{inputs.chat_model}}
     inputs:
       epochs: 1
       num_examples: ${{parent.inputs.num_examples}}
       model_dir: ${{parent.inputs.model_dir}} 
       model_name: ${{parent.inputs.model_name}}
+      chat_model: ${{parent.inputs.chat_model}}
     environment: 
       conda_file: ./conda.yml
       image: mcr.microsoft.com/azureml/curated/acft-hf-nlp-gpu

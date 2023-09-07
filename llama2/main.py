@@ -58,6 +58,7 @@ def parse_args():
 
 
     # add arguments
+    parser.add_argument("--chat_model", type=str, default="False")
     parser.add_argument("--model_dir", type=str)
     parser.add_argument("--epochs", type=int, default=1)
     parser.add_argument("--num_examples", type=int, default=1000)
@@ -76,6 +77,7 @@ def main(args):
     num_examples = args.num_examples
     trained_model = args.trained_model
     model_name = args.model_name
+    chat_model = args.chat_model
     print("trained model path", trained_model)
     print("Model dir: ", os.listdir(os.path.join(PATH,"data", "model")) )
 
@@ -219,6 +221,18 @@ def main(args):
             "### Instruction:\n{instruction}\n\n### Response:{output}"
         ),
     }
+    PROMPT_DICT_CHAT = {
+        "prompt_input": (
+            "<s>[INST]\n{instruction}\n\n### Input:\n{input}\n[/INST]\n### Response:{output}\n</s>"
+        ),
+        "prompt_no_input": (
+            "<s>[INST]\n{instruction}\n[/INST]\n### Response:{output}\n</s>"
+        ),
+    }
+    if chat_model=="True":
+        print("Training for Chat Model")
+        PROMPT_DICT = PROMPT_DICT_CHAT
+
 
     def formatting_prompts_func(example):
         example_input, example_no_input = PROMPT_DICT["prompt_input"], PROMPT_DICT["prompt_no_input"]
