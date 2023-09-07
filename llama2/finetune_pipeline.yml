@@ -7,7 +7,7 @@ inputs:
   num_examples: 2000 #update this to the number of examples you want to use for fine tuning
   model_name: llama2_13b_fine_tuned
   model_dir: 
-    path: azureml://registries/azureml-meta/models/Llama-2-7b/versions/5
+    path: azureml://registries/azureml-meta/models/Llama-2-13b/versions/5
 outputs:
   # map the output of the fine tuning job to the output of pipeline job so that we can easily register the fine tuned model
   # registering the model is required to deploy the model to an online or batch endpoint
