@@ -1,5 +1,6 @@
 import os
 import torch
+import math
 from datasets import load_dataset
 import argparse
 import mlflow
@@ -331,7 +332,6 @@ def main(args):
     
     with mlflow.start_run() as run:
         trainer.train()
-        import math
         eval_results = trainer.evaluate()
         mlflow.log_metric("perplexity",math.exp(eval_results['eval_loss']))
         trainer.model.save_pretrained(new_model)
