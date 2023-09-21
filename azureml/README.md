@@ -1,0 +1,1 @@
+This finetuning approach uses AzureML's text-generation-pipeline component.
