@@ -15,6 +15,7 @@ from transformers import (
     logging,
     
 )
+
 from peft import LoraConfig, PeftModel
 from trl import SFTTrainer, DataCollatorForCompletionOnlyLM
 import json
@@ -199,34 +200,46 @@ def main(args):
     print("device map ", device_map)
 
 
-    with open("data/alpaca_data.json", "r") as file:    
-        list_data_dict = json.load(file)
+    # with open("data/alpaca_data.json", "r") as file:    
+    #     list_data_dict = json.load(file)
+    # list_data_dict= list_data_dict[:num_examples]
+    # instructions = [item["instruction"] for item in list_data_dict]
+    # inputs = [item["input"] for item in list_data_dict]
+    # outputs = [item["output"] for item in list_data_dict]
+
+
+    # dataset = Dataset.from_dict({"instruction":instructions, "input": inputs, "output":outputs})   
+    list_data_dict = pd.read_json("data/sql_examples.jsonl", lines=True).to_dict(orient="records")
     list_data_dict= list_data_dict[:num_examples]
-    instructions = [item["instruction"] for item in list_data_dict]
-    inputs = [item["input"] for item in list_data_dict]
-    outputs = [item["output"] for item in list_data_dict]
+    inputs = [item["question"] for item in list_data_dict] 
+    outputs = [item["sql_query"] for item in list_data_dict]
+    dataset = Dataset.from_dict({"input": inputs, "output":outputs})   
 
 
-    dataset = Dataset.from_dict({"instruction":instructions, "input": inputs, "output":outputs})   
-
+    # PROMPT_DICT = {
+    #     "prompt_input": (
+    #         "Below is an instruction that describes a task, paired with an input that provides further context. "
+    #         "Write a response that appropriately completes the request.\n\n"
+    #         "### Instruction:\n{instruction}\n\n### Input:\n{input}\n\n### Response:{output}"
+    #     ),
+    #     "prompt_no_input": (
+    #         "Below is an instruction that describes a task. "
+    #         "Write a response that appropriately completes the request.\n\n"
+    #         "### Instruction:\n{instruction}\n\n### Response:{output}"
+    #     ),
+    # }
     PROMPT_DICT = {
-        "prompt_input": (
-            "Below is an instruction that describes a task, paired with an input that provides further context. "
-            "Write a response that appropriately completes the request.\n\n"
-            "### Instruction:\n{instruction}\n\n### Input:\n{input}\n\n### Response:{output}"
-        ),
         "prompt_no_input": (
-            "Below is an instruction that describes a task. "
-            "Write a response that appropriately completes the request.\n\n"
-            "### Instruction:\n{instruction}\n\n### Response:{output}"
+            "### Question:\n{input}\n\n### Response:{output}"
         ),
     }
+    
     PROMPT_DICT_CHAT = {
         "prompt_input": (
             "<s>[INST]\n{instruction}\n\n### Input:\n{input}\n[/INST]\n### Response:{output}\n</s>"
         ),
         "prompt_no_input": (
-            "<s>[INST]\n{instruction}\n[/INST]\n### Response:{output}\n</s>"
+            "<s>[INST]\n{input}\n[/INST]\n### Response:{output}\n</s>"
         ),
     }
     if chat_model=="True":
@@ -234,15 +247,24 @@ def main(args):
         PROMPT_DICT = PROMPT_DICT_CHAT
 
 
+    # def formatting_prompts_func(example):
+    #     example_input, example_no_input = PROMPT_DICT["prompt_input"], PROMPT_DICT["prompt_no_input"]
+    #     output_texts = []
+    #     for i in range(len(example['input'])):
+    #         if example['input'][i] == "":
+    #             text =  example_no_input.format_map({"instruction":example["instruction"][i], "output":example["output"][i]})
+    #         else:
+    #             text = example_input.format_map({"instruction":example["instruction"][i], "input":example["input"][i], "output":example["output"][i]})
+
+    #         output_texts.append(text)
+    #     return output_texts
     def formatting_prompts_func(example):
-        example_input, example_no_input = PROMPT_DICT["prompt_input"], PROMPT_DICT["prompt_no_input"]
+        # example_no_input = PROMPT_DICT["prompt_no_input"]
+        example_input = PROMPT_DICT["prompt_input"]
+        instruction = "You are querying the sales database, what is the SQL query for the following input question?"
         output_texts = []
         for i in range(len(example['input'])):
-            if example['input'][i] == "":
-                text =  example_no_input.format_map({"instruction":example["instruction"][i], "output":example["output"][i]})
-            else:
-                text = example_input.format_map({"instruction":example["instruction"][i], "input":example["input"][i], "output":example["output"][i]})
-
+            text =  example_input.format_map({"instruction":instruction, "input":example["input"][i], "output":example["output"][i]})
             output_texts.append(text)
         return output_texts
 

@@ -8,10 +8,10 @@ inputs:
   train_path: data/train.jsonl #update this to the path of your training data
   test_path: data/test.jsonl #update this to the path of your test data
   special_token_path: data/tokens.json #update this to the path of your special tokens file
-  model_name: llama2_13b_fine_tuned
+  model_name: llama2_70b_fine_tuned
   chat_model: False #whether to use the chat model or base model. The format of input data is different between the two models
   model_dir: 
-    path: azureml://registries/azureml-meta/models/Llama-2-13b/versions/9
+    path: azureml://registries/azureml-meta/models/Llama-2-70b/versions/9
 outputs:
   # map the output of the fine tuning job to the output of pipeline job so that we can easily register the fine tuned model
   # registering the model is required to deploy the model to an online or batch endpoint
