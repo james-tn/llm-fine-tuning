@@ -25,7 +25,7 @@ def init():
     model_name="llama2_13b_fine_tuned"
 
   
-    device_map = {"": 0}
+    device_map = "auto"
     artifact_path = f"{model_name}/artifacts/trained_model"
     model_path = os.path.join(
         os.getenv("AZUREML_MODEL_DIR"), artifact_path

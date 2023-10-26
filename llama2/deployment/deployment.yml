@@ -1,13 +1,14 @@
 $schema: https://azuremlschemas.azureedge.net/latest/managedOnlineDeployment.schema.json
 name: blue
 endpoint_name: llma2-fine-tuning
-model: azureml:llama2_13b_fine_tuned:6 #replace this with your model name and version
+model: azureml:llama2_13b_chat_sql_tuned:2 #replace this with your model name and version
+# model: azureml://registries/azureml-meta/models/Llama-2-7b-chat/versions/12
 code_configuration:
   code: ./
-  scoring_script: score.py
+  scoring_script: score_chat.py
 environment: 
   image: mcr.microsoft.com/azureml/curated/foundation-model-inference:6
-instance_type: Standard_NC24ads_A100_v4
+instance_type: standard_nc24ads_a100_v4
 instance_count: 1
 request_settings:
     request_timeout_ms: 60000
