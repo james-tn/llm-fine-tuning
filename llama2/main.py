@@ -295,6 +295,7 @@ def main(args):
 
     model = AutoModelForCausalLM.from_pretrained(
         os.path.join(PATH,"data", "model"),
+                low_cpu_mem_usage=True,
         local_files_only=True,
         quantization_config=bnb_config,
         device_map=device_map
@@ -306,6 +307,7 @@ def main(args):
     # Load LLaMA tokenizer
     tokenizer = AutoTokenizer.from_pretrained(
         os.path.join(PATH,"data", "model"),
+        
         local_files_only=True,
         device_map=device_map
     )
@@ -385,8 +387,8 @@ def main(args):
             # Reload model in FP16 and merge it with LoRA weights
             base_model = AutoModelForCausalLM.from_pretrained(
                 os.path.join(PATH,"data", "model"),
+                        low_cpu_mem_usage=True,
                 local_files_only=True,
-                low_cpu_mem_usage=True,
                 return_dict=True,
                 torch_dtype=torch.float16,
                 device_map=device_map,

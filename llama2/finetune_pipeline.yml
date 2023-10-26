@@ -8,7 +8,7 @@ inputs:
   model_name: llama2_13b_chat_sql_tuned
   chat_model: True #whether to use the chat model or base model. The format of input data is different between the two models
   model_dir: 
-    path: azureml://registries/azureml-meta/models/Llama-2-13b-chat/versions/10
+    path: azureml://registries/azureml-meta/models/Llama-2-13b-chat/versions/12
 outputs:
   # map the output of the fine tuning job to the output of pipeline job so that we can easily register the fine tuned model
   # registering the model is required to deploy the model to an online or batch endpoint
@@ -36,10 +36,10 @@ jobs:
       image: mcr.microsoft.com/azureml/curated/acft-hf-nlp-gpu
     outputs:
       output_dir: ${{parent.outputs.trained_model}}
-    compute: azureml:NC96adsA100 #update NC48adsA100 to the name of your compute target 
+    compute: azureml:StandardND40rsv2 #update NC48adsA100 to the name of your compute target 
 
     distribution:
       type: pytorch
-      process_count_per_instance: 4 #update this to the number of GPUs on your compute target
+      process_count_per_instance: 8 #update this to the number of GPUs on your compute target
     resources:
-      instance_count: 1 #update this to the number of nodes in your cluster
+      instance_count: 2 #update this to the number of nodes in your cluster
