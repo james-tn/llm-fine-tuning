@@ -16,6 +16,12 @@ kubectl apply -f nvidia_device.yaml
 
 az ml compute attach --resource-group ml --workspace-name ws01ent --type Kubernetes --name aksgpu --resource-id "/subscriptions/840b5c5c-3f4a-459a-94fc-6bad2a969f9d/resourcegroups/ml/providers/Microsoft.ContainerService/managedClusters/aksgpu2" --identity-type SystemAssigned --no-wait --namespace gpu-resources
 
+#create the online endpoint
+az ml online-endpoint create -f k8s_endpoint.yaml
+#create the deployment
+az ml online-deployment create -f k8s_deployment.yaml
+
+
 #Delete deployment in case needed
 az ml online-deployment delete --name blue --endpoint-name llm-k8s-gpu --yes --resource-group ml --workspace-name ws01ent
 az ml online-deployment delete --name blue --endpoint-name llm-k8s-ep --yes --resource-group ml --workspace-name ws01ent
