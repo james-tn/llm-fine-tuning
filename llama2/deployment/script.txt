@@ -9,17 +9,23 @@ az aks get-credentials --resource-group ml --name aksgpu2
 
 kubectl apply -f nvidia_device.yaml
 
+#create namespace
+kubectl create namespace gpu-resources
+
+#create instance type
+kubectl apply -f instance_type.yaml
 
 ###az aks nodepool add --resource-group ml --cluster-name aks001 --name gpunp --node-count 1 --node-vm-size standard_nc24ads_a100_v4 --node-taints sku=gpu:NoSchedule --aks-custom-headers UseGPUDedicatedVHD=true --enable-cluster-autoscaler --min-count 1 --max-count 3
 
 #attach to azure ml workspace
 
-az ml compute attach --resource-group ml --workspace-name ws01ent --type Kubernetes --name aksgpu --resource-id "/subscriptions/840b5c5c-3f4a-459a-94fc-6bad2a969f9d/resourcegroups/ml/providers/Microsoft.ContainerService/managedClusters/aksgpu2" --identity-type SystemAssigned --no-wait --namespace gpu-resources
+az ml compute attach --resource-group ml --workspace-name ws01ent --type Kubernetes --name aksgpu2 --resource-id "/subscriptions/840b5c5c-3f4a-459a-94fc-6bad2a969f9d/resourcegroups/ml/providers/Microsoft.ContainerService/managedClusters/aksgpu2" --identity-type SystemAssigned --no-wait --namespace gpu-resources
 
 #create the online endpoint
-az ml online-endpoint create -f k8s_endpoint.yaml
+az ml online-endpoint create -f k8s_endpoint.yml
 #create the deployment
-az ml online-deployment create -f k8s_deployment.yaml
+az ml online-deployment create -f k8s_deployment.yml
+
 
 
 #Delete deployment in case needed
