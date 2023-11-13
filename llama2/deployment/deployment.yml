@@ -1,7 +1,7 @@
 $schema: https://azuremlschemas.azureedge.net/latest/managedOnlineDeployment.schema.json
 name: blue
 endpoint_name: llma2-fine-tuning
-model: azureml:llama2_13b_chat_sql_tuned:2 #replace this with your model name and version
+model: azureml:llama2_13b_chat_sql_tuned:4 #replace this with your model name and version
 # model: azureml://registries/azureml-meta/models/Llama-2-7b-chat/versions/12
 code_configuration:
   code: ./

@@ -1,10 +1,7 @@
 import os
-import logging
 import json
-import numpy
-import joblib
-import torch
-import pandas as pd
+import mlflow
+
 from transformers import (
     AutoModelForCausalLM,
     AutoTokenizer,
@@ -16,7 +13,7 @@ from transformers import (
     logging,
     
 )
-
+import torch
 from transformers.pipelines import ConversationalPipeline, Conversation
 
 def init():
@@ -25,7 +22,13 @@ def init():
     You can write the logic here to perform init operations like caching the model in memory
     """
     global model, tokenizer
-    model_name="llama2_13b_chat_sql_tuned"
+    model_name = os.getenv("AZUREML_MODEL_DIR").split('/')[-2]
+    # loading_path =os.path.join(os.getenv("AZUREML_MODEL_DIR"), model_name)
+    # print("loading_path is ", loading_path)
+    # print("inside model loading path", os.listdir(loading_path))
+    # model = mlflow.pyfunc.load_model(loading_path)
+
+    # print("model directory is ", os.getenv("AZUREML_MODEL_DIR"))  
 
   
     device_map = "auto"
@@ -59,9 +62,6 @@ def predict(data, model, tokenizer, **kwargs):
     TOP_P_KEY = "top_p"
     B_SYS, E_SYS = "<<SYS>>\n", "\n<</SYS>>\n\n"
     
-    if isinstance(data, pd.DataFrame):
-        data = data[data.columns[0]].tolist()
-
     addn_args = kwargs.get("addn_args", {})
     max_gen_len = addn_args.pop(MAX_GEN_LEN_KEY, 256)
     addn_args[MAX_NEW_TOKENS_KEY] = addn_args.get(MAX_NEW_TOKENS_KEY, max_gen_len)
@@ -96,7 +96,7 @@ def predict(data, model, tokenizer, **kwargs):
             if i != len(conv_arr[0:]) - 1:
                 conversation.mark_processed()
     result = conversation_agent(conversation, use_cache=True, **addn_args)
-    return {'output': result.generated_responses[-1]}
+    return result
 
 def run(raw_data):
     """
@@ -104,19 +104,18 @@ def run(raw_data):
     In the example we extract the data from the json input and call the pipeline
     method and return the result back
     """
-    print("model 1: request received")
-    model_input = json.loads(raw_data)["data"]
-    content = model_input['text']
-    max_length = model_input['max_length']
-    # gen_config = GenerationConfig(max_new_tokens=max_length, temperature= 0.8)
-    # content = f"<s>[INST]\n{instruction}\n\n### Input:\n{input}\n[/INST]"
-    model_input = pd.DataFrame({"input":[
-                        {
-                            "role": "user",
-                            "content": content,
-                        },
-                    ],})
-    result= predict(model_input,model, tokenizer)
-    # result = scoring_pipeline(texts, generation_config=gen_config)
-    return result
-
+    input = json.loads(raw_data)["data"]
+    contents = input['text']
+    max_gen_len = input['max_gen_len']
+    temperature = input['temperature']
+    model_input =[]
+    
+    PROMPT_DICT_CHAT ="<s>[INST]\n{context}\n\n### Question:\n{input}\n[/INST]"
+    for content in contents:
+        example = {"context":"You are querying the sales database, what is the SQL query for the following question?","input":content}
+        
+        prompt = PROMPT_DICT_CHAT.format(input=example["input"], context=example["context"])
+        prompt = {"role": "user","content": prompt} 
+        model_input.append(prompt)
+    result = predict(model_input, model, tokenizer, max_gen_len=max_gen_len, temperature=temperature)
+    return {'output': result.generated_responses[-1]}

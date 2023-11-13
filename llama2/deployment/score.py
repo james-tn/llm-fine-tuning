@@ -22,7 +22,7 @@ def init():
     You can write the logic here to perform init operations like caching the model in memory
     """
     global scoring_pipeline
-    model_name="llama2_13b_fine_tuned"
+    model_name = os.getenv("AZUREML_MODEL_DIR").split('/')[-2]
 
   
     device_map = "auto"

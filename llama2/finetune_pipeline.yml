@@ -4,11 +4,13 @@ type: pipeline
 experiment_name: llma2-fine-tuning
 description: llma2-fine-tuning
 inputs:
-  num_examples: 56000 #update this to the number of examples you want to use for fine tuning
-  model_name: llama2_13b_chat_sql_tuned
+  num_examples: 56000 #set max number of examples to use for fine tuning
+  model_name: llama2_13b_chat_sql_tuned #update this to the name of the fine tuned model
   chat_model: True #whether to use the chat model or base model. The format of input data is different between the two models
-  model_dir: 
+  dataset_path: data/sql_examples.jsonl
+  model_dir: # path to the base model in registry.
     path: azureml://registries/azureml-meta/models/Llama-2-13b-chat/versions/12
+  epochs: 5
 outputs:
   # map the output of the fine tuning job to the output of pipeline job so that we can easily register the fine tuned model
   # registering the model is required to deploy the model to an online or batch endpoint
@@ -25,21 +27,23 @@ jobs:
       --trained_model ${{outputs.output_dir}}
       --model_name ${{inputs.model_name}}
       --chat_model ${{inputs.chat_model}}
+      --dataset_path ${{inputs.dataset_path}}
     inputs:
-      epochs: 10
+      epochs: ${{parent.inputs.epochs}}
       num_examples: ${{parent.inputs.num_examples}}
       model_dir: ${{parent.inputs.model_dir}} 
       model_name: ${{parent.inputs.model_name}}
       chat_model: ${{parent.inputs.chat_model}}
+      dataset_path: ${{parent.inputs.dataset_path}}
     environment: 
       conda_file: ./conda.yml
       image: mcr.microsoft.com/azureml/curated/acft-hf-nlp-gpu
     outputs:
       output_dir: ${{parent.outputs.trained_model}}
-    compute: azureml:StandardND40rsv2 #update NC48adsA100 to the name of your compute target 
+    compute: azureml:NC48adsA100 #update NC48adsA100 to the name of your compute target 
 
     distribution:
       type: pytorch
-      process_count_per_instance: 8 #update this to the number of GPUs on your compute target
+      process_count_per_instance: 2 #update this to the number of GPUs on your compute target
     resources:
-      instance_count: 2 #update this to the number of nodes in your cluster
+      instance_count: 1 #update this to the number of nodes in your cluster

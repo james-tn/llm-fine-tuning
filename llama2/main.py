@@ -15,6 +15,8 @@ from transformers import (
     logging,
     
 )
+from transformers.pipelines import ConversationalPipeline, Conversation
+
 
 from peft import LoraConfig, PeftModel
 from trl import SFTTrainer, DataCollatorForCompletionOnlyLM
@@ -45,13 +47,58 @@ class LAMA2Predict(mlflow.pyfunc.PythonModel):
         local_files_only=True,
         device_map=device_map
     )
-    self.pipeline = pipeline(task="text-generation", model=model, tokenizer=tokenizer)
+    model.eval()
+    self.conversation_agent = ConversationalPipeline(model=model, tokenizer=tokenizer)
+
+  def predict(self, context, data,**kwargs): 
+    TEMPERATURE_KEY = "temperature"
+    MAX_GEN_LEN_KEY = "max_gen_len"
+    DO_SAMPLE_KEY = "do_sample"
+    MAX_NEW_TOKENS_KEY = "max_new_tokens"
+    MAX_LENGTH_KEY = "max_length"
+    TOP_P_KEY = "top_p"
+    B_SYS, E_SYS = "<<SYS>>\n", "\n<</SYS>>\n\n"
     
-  def predict(self, context, model_input): 
-    texts = model_input['text']
-    max_length = model_input['max_length']
-    result = self.pipeline(texts, max_new_tokens=max_length)
-    return result
+    if isinstance(data, pd.DataFrame):
+        data = data[data.columns[0]].tolist()
+
+    addn_args = kwargs.get("addn_args", {})
+    max_gen_len = addn_args.pop(MAX_GEN_LEN_KEY, 256)
+    addn_args[MAX_NEW_TOKENS_KEY] = addn_args.get(MAX_NEW_TOKENS_KEY, max_gen_len)
+    addn_args[MAX_LENGTH_KEY] = addn_args.get(MAX_LENGTH_KEY, 4096)
+    addn_args[TEMPERATURE_KEY] = addn_args.get(TEMPERATURE_KEY, 0.9)
+    addn_args[TOP_P_KEY] = addn_args.get(TOP_P_KEY, 0.6)
+    addn_args[DO_SAMPLE_KEY] = addn_args.get(DO_SAMPLE_KEY, True)
+
+    
+    conv_arr = data
+    # validations
+    assert len(conv_arr) > 0
+    assert conv_arr[-1]["role"] == "user"
+    next_turn = "system" if conv_arr[0]["role"] == "system" else "user"
+    # Build conversation
+    conversation = Conversation()
+    
+    for i, conv in enumerate(conv_arr):
+        if conv["role"] == "system":
+            assert next_turn == "system", "System prompts can only be set at the start of the conversation"
+            next_turn = "user"
+            conversation.add_user_input(B_SYS + conv_arr[0]["content"].strip() + E_SYS)
+            conversation.mark_processed()
+        if conv["role"] == "assistant":
+            assert next_turn == "assistant", "Invalid Turn. Expected user input"
+            next_turn = "user"
+            conversation.append_response(conv["content"].strip())
+        elif conv["role"] == "user":
+            assert next_turn == "user", "Invalid Turn. Expected assistant input"
+            next_turn = "assistant"
+            conversation.add_user_input(conv["content"].strip())
+            if i != len(conv_arr[0:]) - 1:
+                conversation.mark_processed()
+    result = self.conversation_agent(conversation, use_cache=True, **addn_args)
+    return result.generated_responses[-1]
+
+
 
 def parse_args():
     # setup arg parser
@@ -65,6 +112,8 @@ def parse_args():
     parser.add_argument("--num_examples", type=int, default=1000)
     parser.add_argument("--model_name", type=str)
     parser.add_argument("--trained_model", type=str, default="trained_model")
+    parser.add_argument("--dataset_path", type=str)
+
     # parse args
     args = parser.parse_args()
 
@@ -79,6 +128,7 @@ def main(args):
     trained_model = args.trained_model
     model_name = args.model_name
     chat_model = args.chat_model
+    dataset_path = args.dataset_path
     print("trained model path", trained_model)
     print("Model dir: ", os.listdir(os.path.join(PATH,"data", "model")) )
 
@@ -187,58 +237,33 @@ def main(args):
     # Pack multiple short examples in the same input sequence to increase efficiency
     packing = False
 
-    # Load the entire model on the GPU 0
-    # device_map = {"": 0}
-    # device_map={'':torch.cuda.current_device()}
-    # print("device map 1", device_map)
-    # device_map = "auto"
-    # device_map={'':torch.xpu.current_device()}
-    # Load dataset (you can process it here)
 
     local_rank = int(os.environ.get('LOCAL_RANK', '0'))
     device_map = {'': local_rank}
     print("device map ", device_map)
-
-
-    # with open("data/alpaca_data.json", "r") as file:    
-    #     list_data_dict = json.load(file)
-    # list_data_dict= list_data_dict[:num_examples]
-    # instructions = [item["instruction"] for item in list_data_dict]
-    # inputs = [item["input"] for item in list_data_dict]
-    # outputs = [item["output"] for item in list_data_dict]
-
-
-    # dataset = Dataset.from_dict({"instruction":instructions, "input": inputs, "output":outputs})   
-    list_data_dict = pd.read_json("data/sql_examples.jsonl", lines=True).to_dict(orient="records")
+    list_data_dict = pd.read_json(dataset_path, lines=True).to_dict(orient="records")
     list_data_dict= list_data_dict[:num_examples]
-    inputs = [item["question"] for item in list_data_dict] 
-    outputs = [item["sql_query"] for item in list_data_dict]
-    dataset = Dataset.from_dict({"input": inputs, "output":outputs})   
+    contexts = [item["context"] for item in list_data_dict] 
+    inputs = [item["input"] for item in list_data_dict] 
+    outputs = [item["output"] for item in list_data_dict]
+    dataset = Dataset.from_dict({"context":contexts, "input": inputs, "output":outputs})   
 
 
-    # PROMPT_DICT = {
-    #     "prompt_input": (
-    #         "Below is an instruction that describes a task, paired with an input that provides further context. "
-    #         "Write a response that appropriately completes the request.\n\n"
-    #         "### Instruction:\n{instruction}\n\n### Input:\n{input}\n\n### Response:{output}"
-    #     ),
-    #     "prompt_no_input": (
-    #         "Below is an instruction that describes a task. "
-    #         "Write a response that appropriately completes the request.\n\n"
-    #         "### Instruction:\n{instruction}\n\n### Response:{output}"
-    #     ),
-    # }
     PROMPT_DICT = {
-        "prompt_no_input": (
+        "prompt_no_context": (
             "### Question:\n{input}\n\n### Response:{output}"
         ),
+        "prompt_context": (
+            "\n{context}\n\n### Question:\n{input}\n\n### Response:{output}"
+        ),
+
     }
     
     PROMPT_DICT_CHAT = {
-        "prompt_input": (
-            "<s>[INST]\n{instruction}\n\n### Input:\n{input}\n[/INST]\n### Response:{output}\n</s>"
+        "prompt_context": (
+            "<s>[INST]\n{context}\n\n### Question:\n{input}\n[/INST]\n### Response:{output}\n</s>"
         ),
-        "prompt_no_input": (
+        "prompt_no_context": (
             "<s>[INST]\n{input}\n[/INST]\n### Response:{output}\n</s>"
         ),
     }
@@ -247,24 +272,12 @@ def main(args):
         PROMPT_DICT = PROMPT_DICT_CHAT
 
 
-    # def formatting_prompts_func(example):
-    #     example_input, example_no_input = PROMPT_DICT["prompt_input"], PROMPT_DICT["prompt_no_input"]
-    #     output_texts = []
-    #     for i in range(len(example['input'])):
-    #         if example['input'][i] == "":
-    #             text =  example_no_input.format_map({"instruction":example["instruction"][i], "output":example["output"][i]})
-    #         else:
-    #             text = example_input.format_map({"instruction":example["instruction"][i], "input":example["input"][i], "output":example["output"][i]})
-
-    #         output_texts.append(text)
-    #     return output_texts
     def formatting_prompts_func(example):
-        # example_no_input = PROMPT_DICT["prompt_no_input"]
-        example_input = PROMPT_DICT["prompt_input"]
-        instruction = "You are querying the sales database, what is the SQL query for the following input question?"
+        # example_no_context = PROMPT_DICT["prompt_no_context"]
+        example_input = PROMPT_DICT["prompt_context"]
         output_texts = []
         for i in range(len(example['input'])):
-            text =  example_input.format_map({"instruction":instruction, "input":example["input"][i], "output":example["output"][i]})
+            text =  example_input.format_map({"context":example["context"][i], "input":example["input"][i], "output":example["output"][i]})
             output_texts.append(text)
         return output_texts
 
@@ -349,7 +362,7 @@ def main(args):
     response_template_with_context = "\n### Response:"  # We added context here: "\n". This is enough for this tokenizer
     response_template_ids = tokenizer.encode(response_template_with_context, add_special_tokens=False)[2:]  # Now we have it like in the dataset texts: `[2277, 29937, 4007, 22137, 29901]`
 
-    data_collator = DataCollatorForCompletionOnlyLM(response_template_ids, tokenizer=tokenizer)
+    # data_collator = DataCollatorForCompletionOnlyLM(response_template_ids, tokenizer=tokenizer)
     split_ds = dataset.train_test_split(test_size=0.1, seed=42)
     train_ds = split_ds["train"]
     eval_ds = split_ds["test"]
@@ -380,7 +393,6 @@ def main(args):
         # del pipe
         del trainer
         import gc
-        gc.collect()
         gc.collect()
         if rank==0:
 
