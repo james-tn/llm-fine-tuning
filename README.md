@@ -14,7 +14,7 @@ Instruction:
 5. Use the test.ipynb notebook to test the fine-tuned model.
 - For deployment
 1. Create online endpoint: ```az ml online-endpoint create -f deployment/endpoint.yml```
-2. Create the deployment: ```az ml online-deployment update -f deployment/deployment.yml```
+2. Create the deployment: ```az ml online-deployment create -f deployment/deployment.yml```
 3. Use the sample in test.ipynb to test the online endpoint
 Credit: 
 This repo uses training data from from https://github.com/tatsu-lab/stanford_alpaca/tree/main
