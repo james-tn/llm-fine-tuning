@@ -1,0 +1,14 @@
+channels:
+  - conda-forge
+dependencies:
+  - pip:
+    - accelerate
+    - peft
+    - bitsandbytes
+    - trl
+    - unsloth
+    - azureml-mlflow
+    
+ 
+
+
