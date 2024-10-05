@@ -1,8 +1,8 @@
 $schema: https://azuremlschemas.azureedge.net/latest/pipelineJob.schema.json
 type: pipeline
 
-experiment_name: llma2-fine-tuning
-description: llma2-fine-tuning
+experiment_name: llma32-3B_full_fine_tuning
+description: Llama-3.2-3B-full-fine-tuning
 inputs:
   num_examples: 56000 #update this to the number of examples you want to use for fine tuning
   train_path: data/train.jsonl #update this to the path of your training data
@@ -11,7 +11,7 @@ inputs:
   model_name: llama2_70b_fine_tuned
   chat_model: False #whether to use the chat model or base model. The format of input data is different between the two models
   model_dir: 
-    path: azureml://registries/azureml-meta/models/Llama-2-70b/versions/9
+    path: azureml://registries/azureml-meta/models/Llama-3.2-3B/versions/2
 outputs:
   # map the output of the fine tuning job to the output of pipeline job so that we can easily register the fine tuned model
   # registering the model is required to deploy the model to an online or batch endpoint
@@ -41,7 +41,7 @@ jobs:
       special_token_path: ${{parent.inputs.special_token_path}}
     environment: 
       conda_file: ./conda.yml
-      image: mcr.microsoft.com/azureml/curated/acft-hf-nlp-gpu
+      image: mcr.microsoft.com/azureml/curated/acpt-pytorch-2.2-cuda12.1
     outputs:
       output_dir: ${{parent.outputs.trained_model}}
     compute: azureml:StandardND40rsv2 #update NC48adsA100 to the name of your compute target 
