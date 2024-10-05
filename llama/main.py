@@ -13,10 +13,10 @@ from transformers import (
     TrainingArguments,
     pipeline,
     logging,
+    TrainerCallback
     
 )
-from transformers.pipelines import ConversationalPipeline, Conversation
-
+from transformers.integrations import MLflowCallback
 
 from peft import LoraConfig, PeftModel
 from trl import SFTTrainer, DataCollatorForCompletionOnlyLM
@@ -27,6 +27,12 @@ from datasets import Dataset
 
 pipeline_artifact_name = "pipeline"
 
+class MlflowLoggingCallback(TrainerCallback):  
+    def on_log(self, args, state, control, logs=None, **kwargs):  
+        # Log metrics to MLflow  
+        if logs is not None:  
+            mlflow.log_metrics(logs, step=state.global_step)  
+            mlflow.log_metric('epoch', state.epoch)  
 
 class LAMA2Predict(mlflow.pyfunc.PythonModel):
   def __init__(self, model_name):
@@ -48,7 +54,6 @@ class LAMA2Predict(mlflow.pyfunc.PythonModel):
         device_map=device_map
     )
     model.eval()
-    self.conversation_agent = ConversationalPipeline(model=model, tokenizer=tokenizer)
 
   def predict(self, context, data,**kwargs): 
     TEMPERATURE_KEY = "temperature"
@@ -77,26 +82,6 @@ class LAMA2Predict(mlflow.pyfunc.PythonModel):
     assert conv_arr[-1]["role"] == "user"
     next_turn = "system" if conv_arr[0]["role"] == "system" else "user"
     # Build conversation
-    conversation = Conversation()
-    
-    for i, conv in enumerate(conv_arr):
-        if conv["role"] == "system":
-            assert next_turn == "system", "System prompts can only be set at the start of the conversation"
-            next_turn = "user"
-            conversation.add_user_input(B_SYS + conv_arr[0]["content"].strip() + E_SYS)
-            conversation.mark_processed()
-        if conv["role"] == "assistant":
-            assert next_turn == "assistant", "Invalid Turn. Expected user input"
-            next_turn = "user"
-            conversation.append_response(conv["content"].strip())
-        elif conv["role"] == "user":
-            assert next_turn == "user", "Invalid Turn. Expected assistant input"
-            next_turn = "assistant"
-            conversation.add_user_input(conv["content"].strip())
-            if i != len(conv_arr[0:]) - 1:
-                conversation.mark_processed()
-    result = self.conversation_agent(conversation, use_cache=True, **addn_args)
-    return result.generated_responses[-1]
 
 
 
@@ -314,6 +299,8 @@ def main(args):
         device_map=device_map
     )
 
+
+
     model.config.use_cache = False
     model.config.pretraining_tp = 1
 
@@ -373,6 +360,8 @@ def main(args):
         eval_dataset=eval_ds,
         peft_config=peft_config,
         # dataset_text_field="text",
+        callbacks=[MlflowLoggingCallback()],
+
         tokenizer=tokenizer,
         args=training_arguments,
         packing=packing,
@@ -380,6 +369,8 @@ def main(args):
         formatting_func=formatting_prompts_func,
 
     )
+    trainer.remove_callback(MLflowCallback)
+
     
     with mlflow.start_run() as run:
         trainer.train()

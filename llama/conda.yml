@@ -7,10 +7,11 @@ dependencies:
     - accelerate
     - peft
     - bitsandbytes
+    - transformers
     - trl
-    - unsloth
+    - scipy
     - azureml-mlflow
-    
+ 
  
 
 
