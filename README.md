@@ -1,7 +1,7 @@
 # llm-fine-tuning
 Examples of fine-tuning LLMs and deployment using Azure ML distributed compute (Multiple GPUs & Multiple nodes)
 Fine-tuning help you improve model's quality and consistency in specialized scenerios.
-This repo fine-tunes pretrained models (LLAMA2-7B, LLAMA2_13B or LLAMA2-70B, including Chat models) from Azure ML's model registry using Hugging Face's SFT library. Azure ML distributed DL infrastructure allow easy scaling out for large scale training. The fine-tuned model is registered in MLFLow format to Azure ML.
+This repo fine-tunes pretrained models (LLAMA, Mistral, Phi-3) from Azure ML's model registry using Hugging Face's SFT library. Azure ML distributed DL infrastructure allow easy scaling out for large scale training. The fine-tuned model is registered in MLFLow format to Azure ML.
 
 Instruction:
 - For fine-tuning:
