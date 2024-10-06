@@ -1,4 +1,4 @@
-*/*secrets.env
+**/secrets.env  
 .env
 __pycache__/
 .tmp/

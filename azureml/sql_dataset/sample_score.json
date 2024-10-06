@@ -1,0 +1,1 @@
+{"input_data": {"input_string": [[{"role": "user", "content": "You are querying the MDDX database, what is the SQL query for the following question?\n###Question:What is the sales share of each product category in relation to the total sales?"}]], "parameters": {"temperature": 0.2, "top_p": 0.9, "do_sample": false, "max_new_tokens": 200}}, "params": {}}

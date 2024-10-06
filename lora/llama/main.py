@@ -294,6 +294,9 @@ def main(args):
     model = AutoModelForCausalLM.from_pretrained(
         os.path.join(PATH,"data", "model"),
                 low_cpu_mem_usage=True,
+        target_modules = ["q_proj", "k_proj", "v_proj", "o_proj",
+                      "gate_proj", "up_proj", "down_proj",],
+
         local_files_only=True,
         quantization_config=bnb_config,
         device_map=device_map
