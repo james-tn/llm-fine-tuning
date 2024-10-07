@@ -150,31 +150,11 @@ def checkpoint_model(
 def training_function(kwargs: dict):
     print("training_function called")
 
-    # Train has a bug somewhere that causes ACCELERATE_TORCH_DEVICE to not be set
-    # properly on multi-gpu nodes
-    # cuda_visible_device = os.environ["CUDA_VISIBLE_DEVICES"].split(",")
-    # local_rank = int(os.environ["LOCAL_RANK"])
-    # device_id = cuda_visible_device[local_rank]
-    # os.environ["ACCELERATE_TORCH_DEVICE"] = f"cuda:{device_id}"
-
     config = kwargs["config"]
     args = argparse.Namespace(**kwargs["args"])
     special_tokens = kwargs.get("special_tokens", [])
     # model_id = config["model_name"]
 
-    # We need to download the model weights on this machine if they don't exit.
-    # We need to acquire a lock to ensure that only one process downloads the model
-    # bucket_uri = get_mirror_link(model_id)
-    # download_path = get_download_path(model_id)
-    # base_path = Path(download_path).parent
-    # base_path.mkdir(parents=True, exist_ok=True)
-    # lock_file = str(base_path / f'{model_id.replace("/",  "--")}.lock')
-    # with FileLock(lock_file):
-    #     download_model(
-    #         model_id=model_id, bucket_uri=bucket_uri, s3_sync_args=["--no-sign-request"]
-    #     )
-
-    # Sample hyper-parameters for learning rate, batch size, seed and a few other HPs
     lr = config["lr"]
     num_epochs = int(config["num_epochs"])
     seed = int(config["seed"])
@@ -194,9 +174,6 @@ def training_function(kwargs: dict):
 
     set_seed(seed)
 
-    # train_ds is the local shard for this model
-    # train_ds = train.get_dataset_shard("train")
-    # valid_ds = train.get_dataset_shard("valid")
     datasets = config["datasets"]
     train_ds = datasets["train"]
     valid_ds = datasets["valid"]
@@ -400,20 +377,6 @@ def training_function(kwargs: dict):
 
                 accelerator.wait_for_everyone()
 
-                # Checkpointing strategy 1: Distributed checkpointing
-                # This checkpointing method makes deepspeed checkpoints on each node
-                # and then Ray Train will aggregate them to a central s3 bucket.
-                # It should be done on all processes (not just the Rank 0)
-                # aggregate_on_rank_0 = False
-                # checkpoint_model(
-                #     checkpoint_folder=tempdir,
-                #     ckpt_id=epoch,
-                #     model=model,
-                #     epoch=epoch,
-                #     last_global_step=step
-                # )
-
-                # Checkpointing strategy 2: Aggregate model on the rank 0 worker then upload
                 aggregate_on_rank_0 = True
                 unwrapped_model = accelerator.unwrap_model(model)
                 unwrapped_model.save_pretrained(
@@ -428,22 +391,6 @@ def training_function(kwargs: dict):
 
                 checkpoint_upload_start = time.perf_counter()
 
-                # Create the checkpoint object to report to Ray Train and upload to storage.
-                # If we aggregated the model on rank 0, we only need to report
-                # the checkpoint from the rank 0 worker, since all other checkpoint
-                # directories are empty (`save_pretrained` was a noop for other workers).
-                # if aggregate_on_rank_0:
-                #     checkpoint = (
-                #         Checkpoint.from_directory(temp_checkpoint_dir)
-                #         if accelerator.is_main_process
-                #         else None
-                #     )
-                # else:
-                #     # Distributed checkpointing should upload shards from each worker.
-                #     checkpoint = Checkpoint.from_directory(temp_checkpoint_dir)
-
-                # Note: After `train.report`, in the case of remote storage,
-                # the checkpoint directory will be uploaded to the remote storage.
                 if accelerator.is_main_process:
                     mlflow.log_metrics(metrics, step=step)
 
@@ -539,8 +486,6 @@ def parse_args():
 
     parser.add_argument("--chat_model", type=str, default="False")
     parser.add_argument("--model_dir", type=str)
-    # parser.add_argument("--epochs", type=int, default=1)
-    # parser.add_argument("--num_examples", type=int, default=1000)
     parser.add_argument("--trained_model", type=str, default="trained_model")
     # parse args
 
@@ -553,11 +498,6 @@ def main():
 
     args = parse_args()
 
-    # if not args.output_dir:
-    #     args.output_dir="."
-    #     raise ValueError("--output_dir must be specified")
-
-    # update the config with args so that we have access to them.
     config = vars(args)
     config.update(
         **{
@@ -579,22 +519,6 @@ def main():
 
     os.environ["RAY_AIR_LOCAL_CACHE_DIR"] = args.output_dir
 
-    # ray.init(
-    #     runtime_env={
-    #         "env_vars": {
-    #             "HF_HOME": "/mnt/local_storage/.cache/huggingface",
-    #             "RAY_AIR_LOCAL_CACHE_DIR": os.environ["RAY_AIR_LOCAL_CACHE_DIR"],
-    #         },
-    #         "working_dir": ".",
-    #     }
-    # )
-
-    # Read data
-    # train_ds = ray.data.read_json(args.train_path)
-    # if args.test_path is not None:
-    #     valid_ds = ray.data.read_json(args.test_path)
-    # else:
-    #     valid_ds = None
 
     train_ds = pd.read_json(args.train_path, lines=True).to_dict("records")
     if args.test_path is not None:
@@ -606,42 +530,6 @@ def main():
     with open(args.special_token_path, "r") as json_file:
         special_tokens = json.load(json_file)["tokens"]
 
-    # assert (
-    #     "ANYSCALE_ARTIFACT_STORAGE" in os.environ
-    # ), "ANYSCALE_ARTIFACT_STORAGE env var must be set!"
-    # artifact_storage = os.environ["ANYSCALE_ARTIFACT_STORAGE"]
-    # user_name = re.sub(r"\s+", "__", os.environ.get("ANYSCALE_USERNAME", "user"))
-    # storage_path = (
-    #     f"{artifact_storage}/{user_name}/ft_llms_with_deepspeed/{args.model_name}"
-    # )
-
-    # trainer = TorchTrainer(
-    #     training_function,
-    #     train_loop_config={
-    #         "config": config,
-    #         "args": vars(args),
-    #         "special_tokens": special_tokens,
-    #     },
-    #     run_config=train.RunConfig(
-    #         storage_path=storage_path,
-    #         checkpoint_config=train.CheckpointConfig(
-    #             num_to_keep=args.num_checkpoints_to_keep,
-    #             checkpoint_score_attribute="perplexity",
-    #             checkpoint_score_order="min",
-    #         ),
-    #     ),
-    #     scaling_config=train.ScalingConfig(
-    #         num_workers=args.num_devices,
-    #         use_gpu=True,
-    #         resources_per_worker={"GPU": 1},
-    #     ),
-    #     datasets={"train": train_ds, "valid": valid_ds},
-    #     dataset_config=ray.train.DataConfig(datasets_to_split=["train", "valid"]),
-    # )
-
-    # result: train.Result = trainer.fit()
-    # `best_checkpoints` are sorted in increasing score order.
-    # (Ex: in this case, negative perplexity, since we set `checkpoint_score_order=min`)
     datasets={"train": train_ds, "valid": valid_ds}
     config.update(datasets=datasets)
     training_function(
@@ -651,14 +539,6 @@ def main():
             "special_tokens": special_tokens,
         }
         )
-    # best_checkpoint, best_checkpoint_metrics = result.best_checkpoints[-1]
-
-    # print("Results are stored at:")
-    # print(result.path)
-    # print("Best checkpoint is stored at:")
-    # print(best_checkpoint)
-    # print(f"With perplexity: {best_checkpoint_metrics['perplexity']}")
-
 
 if __name__ == "__main__":
     main()

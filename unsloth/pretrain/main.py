@@ -24,13 +24,7 @@ def parse_args():
 
 
     # add arguments
-    parser.add_argument("--chat_model", type=str, default="False")
-    parser.add_argument("--model_dir", type=str)
-    parser.add_argument("--epochs", type=int, default=1)
-    parser.add_argument("--num_examples", type=int, default=1000)
     parser.add_argument("--model_name", type=str)
-    parser.add_argument("--trained_model", type=str, default="trained_model")
-    parser.add_argument("--dataset_path", type=str)
     parser.add_argument("--learning_rate", type=float, default=5e-5)
 
     # parse args
@@ -121,12 +115,8 @@ class MlflowLoggingCallback(TrainerCallback):
 
 
 def main(args):
-    num_examples = args.num_examples
-    trained_model = args.trained_model
     model_name = args.model_name
-    chat_model = args.chat_model
-    dataset_path = args.dataset_path
-    pipeline_artifact_name = "pipeline"
+    learning_rate = args.learning_rate
 
 
     max_seq_length = 2048 # Choose any! We auto support RoPE Scaling internally!
@@ -230,7 +220,7 @@ def main(args):
             # num_train_epochs = 1,
 
             # Select a 2 to 10x smaller learning rate for the embedding matrices!
-            learning_rate = args.learning_rate,
+            learning_rate = learning_rate,
             embedding_learning_rate = 1e-5,
 
             fp16 = not is_bfloat16_supported(),

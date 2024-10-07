@@ -19,27 +19,14 @@ jobs:
     code: ./
     command: >-
       python main.py
-      --epochs ${{inputs.epochs}}
-      --num_examples ${{inputs.num_examples}}
-      --trained_model ${{outputs.output_dir}}
       --model_name ${{inputs.model_name}}
-      --chat_model ${{inputs.chat_model}}
-      --dataset_path ${{inputs.dataset_path}}
+      --learning_rate ${{inputs.learning_rate}}
     inputs:
-      epochs: ${{parent.inputs.epochs}}
-      num_examples: ${{parent.inputs.num_examples}}
-      model_name: ${{parent.inputs.model_name}}
-      chat_model: ${{parent.inputs.chat_model}}
-      dataset_path: ${{parent.inputs.dataset_path}}
+      learning_rate: 5e-5
+      model_name: unsloth_llama
     environment: 
       conda_file: ./conda.yml
       image: mcr.microsoft.com/azureml/curated/acpt-pytorch-2.2-cuda12.1
     outputs:
       output_dir: ${{parent.outputs.trained_model}}
     compute: azureml:NC48adsA100 #update NC48adsA100 to the name of your compute target 
-
-    distribution:
-      type: pytorch
-      process_count_per_instance: 2 #update this to the number of GPUs on your compute target
-    resources:
-      instance_count: 1 #update this to the number of nodes in your cluster

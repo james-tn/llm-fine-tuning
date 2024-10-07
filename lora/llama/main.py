@@ -294,9 +294,6 @@ def main(args):
     model = AutoModelForCausalLM.from_pretrained(
         os.path.join(PATH,"data", "model"),
                 low_cpu_mem_usage=True,
-        target_modules = ["q_proj", "k_proj", "v_proj", "o_proj",
-                      "gate_proj", "up_proj", "down_proj",],
-
         local_files_only=True,
         quantization_config=bnb_config,
         device_map=device_map
@@ -324,6 +321,11 @@ def main(args):
         r=lora_r,
         bias="none",
         task_type="CAUSAL_LM",
+        target_modules = ["q_proj", "k_proj", "v_proj", "o_proj",
+                        "gate_proj", "up_proj", "down_proj",
+
+                        "embed_tokens", "lm_head",], # Add for continual pretraining
+
     )
 
     # Set training parameters
