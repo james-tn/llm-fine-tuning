@@ -11,8 +11,6 @@ trial:
     image: mcr.microsoft.com/azureml/curated/acpt-pytorch-2.2-cuda12.1
 compute: azureml:NC48adsA100 #update NC48adsA100 to the name of your compute target 
 sampling_algorithm: bayesian
-settings:
- default_compute: azureml:serverless
 search_space:
   learning_rate:
     type: uniform
