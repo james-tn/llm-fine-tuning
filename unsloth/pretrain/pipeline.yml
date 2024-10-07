@@ -13,6 +13,9 @@ outputs:
   # map the output of the fine tuning job to the output of pipeline job so that we can easily register the fine tuned model
   # registering the model is required to deploy the model to an online or batch endpoint
   trained_model:
+settings:
+ default_compute: azureml:serverless
+
 jobs:
   train:
     type: command
@@ -29,4 +32,7 @@ jobs:
       image: mcr.microsoft.com/azureml/curated/acpt-pytorch-2.2-cuda12.1
     outputs:
       output_dir: ${{parent.outputs.trained_model}}
-    compute: azureml:NC48adsA100 #update NC48adsA100 to the name of your compute target 
+    resources:
+      instance_count: 1
+      instance_type: Standard_NC48ads_A100_v4 
+
