@@ -98,6 +98,7 @@ def parse_args():
     parser.add_argument("--model_name", type=str)
     parser.add_argument("--trained_model", type=str, default="trained_model")
     parser.add_argument("--dataset_path", type=str)
+    parser.add_argument("--mounted_data_file", type=str)
 
     # parse args
     args = parser.parse_args()
@@ -114,6 +115,8 @@ def main(args):
     model_name = args.model_name
     chat_model = args.chat_model
     dataset_path = args.dataset_path
+    mounted_data_file = args.mounted_data_file
+
     print("trained model path", trained_model)
     print("Model dir: ", os.listdir(os.path.join(PATH,"data", "model")) )
 
@@ -227,6 +230,8 @@ def main(args):
     device_map = {'': local_rank}
     print("device map ", device_map)
     list_data_dict = pd.read_json(dataset_path, lines=True).to_dict(orient="records")
+    list_data_dict_l = pd.read_json(mounted_data_file, lines=True).to_dict(orient="records")
+    print("listed datafile, ", len(list_data_dict_l))
     list_data_dict= list_data_dict[:num_examples]
     contexts = [item["context"] for item in list_data_dict] 
     inputs = [item["input"] for item in list_data_dict] 

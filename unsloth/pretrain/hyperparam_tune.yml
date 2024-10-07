@@ -3,12 +3,7 @@ type: sweep
 trial:
   command: >-
     python main.py
-    --epochs ${{inputs.epochs}}
-    --num_examples ${{inputs.num_examples}}
-    --trained_model ${{outputs.trained_model}}
     --model_name ${{inputs.model_name}}
-    --chat_model ${{inputs.chat_model}}
-    --dataset_path ${{inputs.dataset_path}}
     --learning_rate ${{search_space.learning_rate}}
   code: ./
   environment: 
@@ -31,10 +26,7 @@ limits:
 experiment_name: unsloth_pretrain_hyper_param_tune
 description: unsloth pretrain
 inputs:
-  num_examples: 56000 #set max number of examples to use for fine tuning
   model_name: unsloth_mistral #update this to the name of the fine tuned model
-  chat_model: False #whether to use the chat model or base model. The format of input data is different between the two models
-  dataset_path: data/sqltrain.jsonl
   epochs: 5
 outputs:
   # map the output of the fine tuning job to the output of pipeline job so that we can easily register the fine tuned model
