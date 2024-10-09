@@ -50,4 +50,4 @@ jobs:
       type: pytorch
       process_count_per_instance: 2 #update this to the number of GPUs on your compute target
     resources:
-      instance_count: 1 #update this to the number of nodes in your cluster
+      instance_count: 4 #update this to the number of nodes in your cluster

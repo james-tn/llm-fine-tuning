@@ -47,33 +47,6 @@ jobs:
     outputs:
       output_dir: ${{parent.outputs.trained_model}}
     compute: azureml:NC48adsA100 #update NC48adsA100 to the name of your compute target 
-  eval:
-    type: command
-    code: ./
-    command: >-
-      python main.py
-      --model_dir ${{inputs.model_dir}}
-      --epochs ${{inputs.epochs}}
-      --num_examples ${{inputs.num_examples}}
-      --trained_model ${{outputs.output_dir}}
-      --model_name ${{inputs.model_name}}
-      --chat_model ${{inputs.chat_model}}
-      --dataset_path ${{inputs.dataset_path}}
-      --mounted_data_file ${{inputs.mounted_data_file}}
-    inputs:
-      epochs: ${{parent.inputs.epochs}}
-      num_examples: ${{parent.inputs.num_examples}}
-      model_dir: ${{parent.inputs.model_dir}} 
-      model_name: ${{parent.inputs.model_name}}
-      chat_model: ${{parent.inputs.chat_model}}
-      dataset_path: ${{parent.inputs.dataset_path}}
-      mounted_data_file: ${{parent.inputs.mounted_data_file}}
-    environment: 
-      conda_file: ./conda.yml
-      image: mcr.microsoft.com/azureml/curated/acpt-pytorch-2.2-cuda12.1
-    outputs:
-      output_dir: ${{parent.outputs.trained_model}}
-    compute: azureml:NC48adsA100 #update NC48adsA100 to the name of your compute target 
 
     distribution:
       type: pytorch

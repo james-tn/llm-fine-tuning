@@ -24,8 +24,10 @@ def parse_args():
 
 
     # add arguments
-    parser.add_argument("--model_name", type=str)
+    parser.add_argument("--mounted_data_folder", type=str)
     parser.add_argument("--learning_rate", type=float, default=5e-5)
+    parser.add_argument("--model_name", type=str)
+    parser.add_argument("--trained_model", type=str, default="trained_model")
 
     # parse args
     args = parser.parse_args()
@@ -117,7 +119,10 @@ class MlflowLoggingCallback(TrainerCallback):
 def main(args):
     model_name = args.model_name
     learning_rate = args.learning_rate
-
+    print("content of the folder ", os.listdir(args.mounted_data_folder))
+    trained_model = args.trained_model
+    #save your train model to this folder to persist to job storage in cloud
+    print("content of the trained_model folder ", os.listdir(args.trained_model))
 
     max_seq_length = 2048 # Choose any! We auto support RoPE Scaling internally!
     dtype = None # None for auto detection. Float16 for Tesla T4, V100, Bfloat16 for Ampere+
