@@ -185,7 +185,7 @@ def main(args):
         trainer_stats = trainer.train()
         eval_results = trainer.evaluate()
         mlflow.log_metric("perplexity",math.exp(eval_results['eval_loss']))
-
+        os.makedirs("data", exist_ok=True)  
         model.save_pretrained("data/model")
         tokenizer.save_pretrained("data/tokenizer")
         os.environ["AZUREML_ARTIFACTS_DEFAULT_TIMEOUT"] = "1800" #give time for model to be registered
