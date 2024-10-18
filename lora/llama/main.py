@@ -25,7 +25,6 @@ from datasets import Dataset
 
 #Function to load model for scoring 
 
-pipeline_artifact_name = "pipeline"
 
 class MlflowLoggingCallback(TrainerCallback):  
     def on_log(self, args, state, control, logs=None, **kwargs):  
@@ -35,53 +34,7 @@ class MlflowLoggingCallback(TrainerCallback):
             mlflow.log_metric('epoch', state.epoch)  
 
 class LAMA2Predict(mlflow.pyfunc.PythonModel):
-  def __init__(self, model_name):
-    self.model_name = model_name
-  def load_context(self, context):
-    device_map = {"": 0}
-    artifact_path = f"{self.model_name}/artifacts/trained_model"
-    model = AutoModelForCausalLM.from_pretrained(
-        artifact_path,
-        local_files_only=True,
-        low_cpu_mem_usage=True,
-        return_dict=True,
-        torch_dtype=torch.float16,
-        device_map=device_map,
-    )
-    tokenizer = AutoTokenizer.from_pretrained(
-        artifact_path,
-        local_files_only=True,
-        device_map=device_map
-    )
-    model.eval()
-
-  def predict(self, context, data,**kwargs): 
-    TEMPERATURE_KEY = "temperature"
-    MAX_GEN_LEN_KEY = "max_gen_len"
-    DO_SAMPLE_KEY = "do_sample"
-    MAX_NEW_TOKENS_KEY = "max_new_tokens"
-    MAX_LENGTH_KEY = "max_length"
-    TOP_P_KEY = "top_p"
-    B_SYS, E_SYS = "<<SYS>>\n", "\n<</SYS>>\n\n"
-    
-    if isinstance(data, pd.DataFrame):
-        data = data[data.columns[0]].tolist()
-
-    addn_args = kwargs.get("addn_args", {})
-    max_gen_len = addn_args.pop(MAX_GEN_LEN_KEY, 256)
-    addn_args[MAX_NEW_TOKENS_KEY] = addn_args.get(MAX_NEW_TOKENS_KEY, max_gen_len)
-    addn_args[MAX_LENGTH_KEY] = addn_args.get(MAX_LENGTH_KEY, 4096)
-    addn_args[TEMPERATURE_KEY] = addn_args.get(TEMPERATURE_KEY, 0.9)
-    addn_args[TOP_P_KEY] = addn_args.get(TOP_P_KEY, 0.6)
-    addn_args[DO_SAMPLE_KEY] = addn_args.get(DO_SAMPLE_KEY, True)
-
-    
-    conv_arr = data
-    # validations
-    assert len(conv_arr) > 0
-    assert conv_arr[-1]["role"] == "user"
-    next_turn = "system" if conv_arr[0]["role"] == "system" else "user"
-    # Build conversation
+    pass
 
 
 
@@ -388,7 +341,7 @@ def main(args):
         mlflow.log_metric("perplexity",math.exp(eval_results['eval_loss']))
         trainer.model.save_pretrained(new_model)
         model_output_dir = "trained_model"
-        model_artifact_path = model_name
+        model_artifact_path = "mlflow_model_folder"
         # Empty VRAM
         del model
         # del pipe
@@ -417,11 +370,11 @@ def main(args):
             )
             tokenizer.pad_token = tokenizer.eos_token
             tokenizer.padding_side = "right"
-            model.save_pretrained(model_output_dir)
-            tokenizer.save_pretrained(model_output_dir)
+            model.save_pretrained(model_output_dir+"/data/model")
+            tokenizer.save_pretrained(model_output_dir+"/data/tokenizer")
             os.environ["AZUREML_ARTIFACTS_DEFAULT_TIMEOUT"] = "1800" #give time for model to be registered
-            mlflow.pyfunc.log_model(artifacts={pipeline_artifact_name: model_output_dir}, artifact_path=model_artifact_path, python_model=LAMA2Predict(model_name))
-            model_uri = f"runs:/{run.info.run_id}/{model_artifact_path}"
+            mlflow.pyfunc.log_model(code_paths=[model_output_dir], artifact_path=model_artifact_path, python_model=LAMA2Predict())
+            model_uri = f"runs:/{run.info.run_id}/{model_artifact_path}/artifacts/code/{model_output_dir}"
             mlflow.register_model(model_uri, name = model_name,await_registration_for=1800)
 
 

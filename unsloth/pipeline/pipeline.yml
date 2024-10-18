@@ -1,0 +1,61 @@
+$schema: https://azuremlschemas.azureedge.net/latest/pipelineJob.schema.json
+type: pipeline
+display_name: unsloth_pipeline_with_hyperparameter_sweep
+description: Tune hyperparameters for pretrain then continue with fine-tunning
+settings:
+    default_compute: azureml:NC48adsA100 #update NC48adsA100 to the name of your compute target 
+jobs:
+  pretrain_step:
+    type: sweep
+    trial:
+      command: >-
+        python pretrain.py
+        --model_name ${{inputs.model_name}}
+        --learning_rate ${{search_space.learning_rate}}
+        --mounted_data_folder ${{inputs.mounted_data_folder}}
+        --trained_model ${{outputs.model_output}}
+      code: ./pretrain_src
+      environment: 
+        conda_file: ./conda.yml
+        image: mcr.microsoft.com/azureml/curated/acpt-pytorch-2.2-cuda12.1
+    sampling_algorithm: bayesian
+    search_space:
+      learning_rate:
+        type: uniform
+        min_value: 5e-5
+        max_value: 5e-3
+    objective:
+      goal: minimize
+      primary_metric: perplexity
+    limits:
+      max_total_trials: 4
+      max_concurrent_trials: 2
+      timeout: 3600
+    experiment_name: unsloth_pretrain_hyper_param_tune
+    description: unsloth pretrain
+    inputs:
+      model_name: unsloth_mistral #update this to the name of the fine tuned model
+      epochs: 5
+      mounted_data_folder:
+        mode: ro_mount
+        path: azureml:test_data:1
+        type: uri_folder
+    outputs:
+      model_output:
+  fine_tune_step:
+    type: command
+    inputs:
+      trained_model: ${{parent.jobs.pretrain_step.outputs.model_output}}
+      type: uri_folder
+    outputs:
+      fine_tuned_model:
+    command: >-
+      python fine_tune.py
+      --input_model ${{inputs.trained_model}} 
+      --trained_model ${{outputs.fine_tuned_model}}
+    code: ./fine_tune_src
+    environment:
+      conda_file: ./conda.yml
+      image: mcr.microsoft.com/azureml/curated/acpt-pytorch-2.2-cuda12.1
+
+    
