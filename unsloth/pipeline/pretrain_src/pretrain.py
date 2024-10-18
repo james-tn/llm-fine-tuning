@@ -187,7 +187,7 @@ def main(args):
         mlflow.log_metric("perplexity",math.exp(eval_results['eval_loss']))
         os.makedirs("data", exist_ok=True)  
         model.save_pretrained(args.trained_model+"/model")
-        tokenizer.save_pretrained(args.train_model+"/tokenizer")
+        tokenizer.save_pretrained(args.trained_model+"/tokenizer")
 
 
 if __name__ == "__main__":
