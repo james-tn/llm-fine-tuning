@@ -54,6 +54,12 @@ def main(args):
     # model_name = args.model_name
     # learning_rate = args.learning_rate
     print("content of the folder ", os.listdir(args.input_model))
+    #code to perform fining....
+    # os.environ["AZUREML_ARTIFACTS_DEFAULT_TIMEOUT"] = "1800" #give time for model to be registered
+    # mlflow.pyfunc.log_model(artifacts={"data":"data"}, artifact_path=model_artifact_path, python_model=LAMA2Predict())
+    # model_uri = f"runs:/{run.info.run_id}/{model_artifact_path}"
+    # mlflow.register_model(model_uri, name = model_name,await_registration_for=1800)
+
 
 
 

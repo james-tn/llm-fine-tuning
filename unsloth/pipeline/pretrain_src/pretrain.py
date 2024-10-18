@@ -186,13 +186,8 @@ def main(args):
         eval_results = trainer.evaluate()
         mlflow.log_metric("perplexity",math.exp(eval_results['eval_loss']))
         os.makedirs("data", exist_ok=True)  
-        model.save_pretrained("data/model")
-        tokenizer.save_pretrained("data/tokenizer")
-        os.environ["AZUREML_ARTIFACTS_DEFAULT_TIMEOUT"] = "1800" #give time for model to be registered
-        mlflow.pyfunc.log_model(artifacts={"data":"data"}, artifact_path=model_artifact_path, python_model=LAMA2Predict())
-        model_uri = f"runs:/{run.info.run_id}/{model_artifact_path}"
-        mlflow.register_model(model_uri, name = model_name,await_registration_for=1800)
-
+        model.save_pretrained(args.trained_model+"/model")
+        tokenizer.save_pretrained(args.train_model+"/tokenizer")
 
 
 if __name__ == "__main__":
