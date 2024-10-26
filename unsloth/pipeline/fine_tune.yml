@@ -5,18 +5,17 @@ display_name: fine_tune
 version: 1
 type: command
 inputs:
-  model: 
-    type: mlflow_model
-  test_data:
+  trained_model:
     type: uri_folder
 outputs:
-  predict_result:
+  fine_tuned_model:
     type: uri_folder
-code: ./predict-src
-environment: azureml://registries/azureml/environments/sklearn-1.5/labels/latest
 command: >-
-  python predict.py 
-  --model ${{inputs.model}} 
-  --test_data ${{inputs.test_data}} 
-  --predict_result ${{outputs.predict_result}}
+  python fine_tune.py
+  --input_model ${{inputs.trained_model}} 
+  --trained_model ${{outputs.fine_tuned_model}}
+code: ./fine_tune_src
+environment:
+  conda_file: ./conda.yml
+  image: mcr.microsoft.com/azureml/curated/acpt-pytorch-2.2-cuda12.1
 # </component>

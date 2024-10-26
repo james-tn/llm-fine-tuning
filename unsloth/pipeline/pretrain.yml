@@ -1,82 +1,29 @@
 $schema: https://azuremlschemas.azureedge.net/latest/commandComponent.schema.json
 type: command
-
-name: train_model
-display_name: train_model
-version: 1
-
-inputs: 
-  data:
+name: pretrain
+display_name: pretrain
+inputs:
+  model_name: 
+    type: string
+    default: unsloth_mistral #update this to the name of the fine tuned model
+  learning_rate: 
+    type: number
+    default: 5e-5
+  epochs: 
+    type: number
+    default: 5
+  mounted_data_folder:
     type: uri_folder
-  c_value:
-    type: number
-    default: 1.0
-  kernel:
-    type: string
-    default: rbf
-  degree:
-    type: integer
-    default: 3
-  gamma:
-    type: string
-    default: scale
-  coef0: 
-    type: number
-    default: 0
-  shrinking:
-    type: boolean
-    default: false
-  probability:
-    type: boolean
-    default: false
-  tol:
-    type: number
-    default: 1e-3
-  cache_size:
-    type: number
-    default: 1024
-  verbose:
-    type: boolean
-    default: false
-  max_iter:
-    type: integer
-    default: -1
-  decision_function_shape:
-    type: string
-    default: ovr
-  break_ties:
-    type: boolean
-    default: false
-  random_state:
-    type: integer
-    default: 42
-
 outputs:
-  model_output:
-    type: mlflow_model
-  test_data:
+  trained_model:
     type: uri_folder
-  
-code: ./train-src
-
-environment: azureml://registries/azureml/environments/sklearn-1.5/labels/latest
-
 command: >-
-  python train.py 
-  --data ${{inputs.data}}
-  --C ${{inputs.c_value}}
-  --kernel ${{inputs.kernel}}
-  --degree ${{inputs.degree}}
-  --gamma ${{inputs.gamma}}
-  --coef0 ${{inputs.coef0}}
-  --shrinking ${{inputs.shrinking}}
-  --probability ${{inputs.probability}}
-  --tol ${{inputs.tol}}
-  --cache_size ${{inputs.cache_size}}
-  --verbose ${{inputs.verbose}}
-  --max_iter ${{inputs.max_iter}}
-  --decision_function_shape ${{inputs.decision_function_shape}}
-  --break_ties ${{inputs.break_ties}}
-  --random_state ${{inputs.random_state}}
-  --model_output ${{outputs.model_output}}
-  --test_data ${{outputs.test_data}}
+  python pretrain.py
+  --model_name ${{inputs.model_name}}
+  --learning_rate ${{inputs.learning_rate}}
+  --mounted_data_folder ${{inputs.mounted_data_folder}}
+  --trained_model ${{outputs.trained_model}}
+code: ./pretrain_src
+environment: 
+  conda_file: ./conda.yml
+  image: mcr.microsoft.com/azureml/curated/acpt-pytorch-2.2-cuda12.1
