@@ -13,7 +13,7 @@ inputs:
     path: azureml:sql_example:1
     type: uri_file
   model_dir: # path to the base model in registry.
-    path: azureml://registries/azureml-meta/models/Meta-Llama-3.1-8B/versions/2
+    path: azureml://registries/azureml-meta/models/Meta-Llama-3-70B/versions/6
   epochs: 1
 outputs:
   # map the output of the fine tuning job to the output of pipeline job so that we can easily register the fine tuned model
@@ -46,10 +46,10 @@ jobs:
       image: mcr.microsoft.com/azureml/curated/acpt-pytorch-2.2-cuda12.1
     outputs:
       output_dir: ${{parent.outputs.trained_model}}
-    compute: azureml:NC48adsA100 #update NC48adsA100 to the name of your compute target 
+    compute: azureml:NC96adsA100 #update NC48adsA100 to the name of your compute target 
 
     distribution:
       type: pytorch
-      process_count_per_instance: 2 #update this to the number of GPUs on your compute target
+      process_count_per_instance: 1 #update this to the number of GPUs on your compute target
     resources:
       instance_count: 1 #update this to the number of nodes in your cluster

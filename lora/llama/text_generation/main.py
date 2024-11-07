@@ -126,10 +126,10 @@ def main(args):
     bf16 = False
 
     # Batch size per GPU for training
-    per_device_train_batch_size = 4
+    per_device_train_batch_size = 1
 
     # Batch size per GPU for evaluation
-    per_device_eval_batch_size = 4
+    per_device_eval_batch_size = 1
 
     # Number of update steps to accumulate the gradients for
     gradient_accumulation_steps = 1
