@@ -356,7 +356,7 @@ def main(args):
                         low_cpu_mem_usage=True,
                 local_files_only=True,
                 return_dict=True,
-                torch_dtype=torch.float16,
+                quantization_config=bnb_config,
                 device_map=device_map,
             )
             model = PeftModel.from_pretrained(base_model, new_model)
