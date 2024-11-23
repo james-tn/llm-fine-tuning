@@ -1,3 +1,0 @@
-$schema: https://azuremlschemas.azureedge.net/latest/managedOnlineEndpoint.schema.json
-name: llma2-fine-tuning
-auth_mode: key
