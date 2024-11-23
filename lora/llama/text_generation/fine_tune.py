@@ -230,7 +230,7 @@ def main(args):
         warmup_ratio=warmup_ratio,  
         group_by_length=group_by_length,  
         lr_scheduler_type=lr_scheduler_type,  
-        deepspeed="ds_config.json" if deepspeed else None,  
+        deepspeed="deepspeed_configs/ds_config.json" if deepspeed else None,  
     )  
     training_arguments.ddp_find_unused_parameters = False  
     response_template = "### Output:"  

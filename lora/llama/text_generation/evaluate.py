@@ -28,31 +28,8 @@ def load_model(model, tokenizer):
     This function is called when the container is initialized/started, typically after create/update of the deployment.
     You can write the logic here to perform init operations like caching the model in memory
     """
-    
 
   
-    # device_map = "auto"
-    # model_path = os.path.join(
-    #     base_path, "data/model"
-    # )
-    # tokenizer_path =  os.path.join(
-    #     base_path, "data/tokenizer"
-    # )
-
-
-    # model = AutoModelForCausalLM.from_pretrained(
-    #     model_path,
-    #     local_files_only=True,
-    #     low_cpu_mem_usage=True,
-    #     return_dict=True,
-    #     torch_dtype=torch.float16,
-    #     device_map=device_map,
-    # )
-    # tokenizer = AutoTokenizer.from_pretrained(
-    #     tokenizer_path,
-    #     local_files_only=True,
-    #     device_map=device_map
-    # )
     model.generation_config.pad_token_id = tokenizer.pad_token_id
 
     scoring_pipeline = pipeline(task="text-generation", model=model, tokenizer=tokenizer)
@@ -204,6 +181,8 @@ def main(args):
         os.path.join(model_dir, "data", "model") ,  
         local_files_only=True,
         torch_dtype=torch.float16,
+        device_map="auto"  
+
 
     )  
     model = PeftModel.from_pretrained(base_model, os.path.join(trained_model, "lora"))
