@@ -4,6 +4,8 @@ import math
 import argparse  
 import mlflow  
 import pandas as pd  
+import glob  
+
 from datasets import Dataset  
 from transformers import (  
     AutoModelForCausalLM,  
@@ -267,7 +269,6 @@ def main(args):
             gc.collect()  
             ckp_tag = get_latest_checkpoint_tag(ckp_dir)
             ckp_dir = os.path.join(ckp_dir, ckp_tag)
-            fp32_output_path = os.path.join(ckp_dir, "pytorch_model.bin")            
             subprocess.run(
                 ['python', 'zero_to_fp32.py', '.', ckp_dir],
                 cwd=ckp_dir,
@@ -279,7 +280,10 @@ def main(args):
             #copy from the converted_fp32 to the trained_model
             dest_path = os.path.join(trained_model, 'lora')
             os.makedirs(dest_path, exist_ok=True)
-            shutil.copy(fp32_output_path, dest_path)       
+            # Copy all bin files from the converted_fp32 to the trained_model  
+            bin_files_pattern = os.path.join(ckp_dir, "pytorch_model-*.bin")  
+            for fp32_output_path in glob.glob(bin_files_pattern):  
+                shutil.copy(fp32_output_path, dest_path)  
             # Copy config.json and tokenizer files to dest_path
             model_files = ['adapter_config.json','adapter_model.safetensors','tokenizer.json', 'tokenizer_config.json', 'special_tokens_map.json']
 

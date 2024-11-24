@@ -40,7 +40,7 @@ inputs:
     path: azureml:hscode_test_short_ds:4
     type: uri_file  
   model_dir:  
-    path: azureml://registries/azureml-meta/models/Meta-Llama-3.1-8B/versions/4
+    path: azureml://registries/azureml-meta/models/Meta-Llama-3-70B/versions/7
 outputs:  
   trained_model:  
   ckp_dir:
@@ -110,10 +110,10 @@ jobs:
     outputs:  
       output_dir: ${{parent.outputs.trained_model}}  
       ckp_dir: ${{parent.outputs.ckp_dir}}  
-    compute: azureml:NC48adsA100  
+    compute: azureml:NC96adsA100  
     distribution:  
       type: pytorch  
-      process_count_per_instance: 2  
+      process_count_per_instance: 4  
     resources:  
       instance_count: 1  
   evaluate:  
@@ -138,4 +138,4 @@ jobs:
     environment:  
       conda_file: ./conda.yml  
       image: mcr.microsoft.com/azureml/curated/acpt-pytorch-2.2-cuda12.1  
-    compute: azureml:NC48adsA100  
+    compute: azureml:NC96adsA100  
