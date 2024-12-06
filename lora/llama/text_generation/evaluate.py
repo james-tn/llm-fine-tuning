@@ -174,8 +174,8 @@ def main(args):
 
     chat_model = args.chat_model
     model_artifact_path = "mlflow_model_folder"
-
-    print("content of model path", os.listdir(trained_model))
+    lora_weight_path = os.path.join(trained_model, "lora")
+    print("content of model path", lora_weight_path)
     
     base_model = AutoModelForCausalLM.from_pretrained(  
         os.path.join(model_dir, "data", "model") ,  
@@ -185,7 +185,7 @@ def main(args):
 
 
     )  
-    model = PeftModel.from_pretrained(base_model, os.path.join(trained_model, "lora"))
+    model = PeftModel.from_pretrained(base_model,lora_weight_path )
     model = model.merge_and_unload()
     tokenizer = AutoTokenizer.from_pretrained(  
          os.path.join(trained_model, "lora"),  
