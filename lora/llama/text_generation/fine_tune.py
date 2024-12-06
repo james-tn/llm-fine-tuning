@@ -259,15 +259,24 @@ def main(args):
   
     with mlflow.start_run() as run:  
         trainer.train() 
-        print("done with training") 
+        print("done with training")
+        dest_path = os.path.join(trained_model, 'lora')
+        os.makedirs(dest_path, exist_ok=True)
+ 
   
         if rank == 0:  
             # Clear memory  
+            if not deepspeed:  
+                # Save the model
+                model.save_pretrained(dest_path)
+                return
+
             del model  
             del trainer  
             import gc  
             gc.collect()  
             ckp_tag = get_latest_checkpoint_tag(ckp_dir)
+            
             ckp_dir = os.path.join(ckp_dir, ckp_tag)
             subprocess.run(
                 ['python', 'zero_to_fp32.py', '.', ckp_dir],
@@ -278,8 +287,6 @@ def main(args):
                 check=True
             )
             #copy from the converted_fp32 to the trained_model
-            dest_path = os.path.join(trained_model, 'lora')
-            os.makedirs(dest_path, exist_ok=True)
             # Copy all bin files from the converted_fp32 to the trained_model  
             bin_files_pattern = os.path.join(ckp_dir, "pytorch_model-*.bin")  
             for fp32_output_path in glob.glob(bin_files_pattern):  
