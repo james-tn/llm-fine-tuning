@@ -269,6 +269,7 @@ def main(args):
             if not deepspeed:  
                 # Save the model
                 model.save_pretrained(dest_path)
+                tokenizer.save_pretrained(dest_path)    
                 return
 
             del model  
