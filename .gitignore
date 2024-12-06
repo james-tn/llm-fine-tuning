@@ -4,3 +4,4 @@ __pycache__/
 .tmp/
 .vscode/
 .azure
+doc/LLM FT in Azure ML.docx
