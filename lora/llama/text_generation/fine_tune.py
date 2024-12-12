@@ -12,7 +12,8 @@ from transformers import (
     AutoTokenizer,  
     BitsAndBytesConfig,  
     TrainingArguments,  
-    TrainerCallback  
+    TrainerCallback,
+    Trainer  
 )  
 import shutil  
 
@@ -66,7 +67,7 @@ class MlflowLoggingCallback(TrainerCallback):
             mlflow.log_metric('epoch', state.epoch)  
   
 class EarlyStoppingCallback(TrainerCallback):  
-    def __init__(self, early_stopping_patience=1, early_stopping_threshold=0.0):  
+    def __init__(self, early_stopping_patience=3, early_stopping_threshold=0.0):  
         self.early_stopping_patience = early_stopping_patience  
         self.early_stopping_threshold = early_stopping_threshold  
         self.best_metric = None  
@@ -91,7 +92,7 @@ def parse_args():
     parser = argparse.ArgumentParser()  
     parser.add_argument("--model_dir", type=str)  
     parser.add_argument("--epochs", type=int, default=1)  
-    parser.add_argument("--max_steps", type=int, default=1000)  
+    parser.add_argument("--max_steps", type=int)  
     parser.add_argument("--trained_model", type=str, default="trained_model")  
     parser.add_argument("--ckp_dir", type=str, default="ckp_dir")  
     parser.add_argument("--train_dataset", type=str)  
@@ -118,7 +119,11 @@ def parse_args():
     parser.add_argument("--bf16", type=str2bool, nargs='?', const=True, default=True)  
     parser.add_argument("--gradient_checkpointing", type=str2bool, nargs='?', const=True, default=True)  
     parser.add_argument("--packing", type=str2bool, nargs='?', const=True, default=False)  
-  
+    parser.add_argument("--use_lora", type=str2bool, nargs='?', const=True, default=True, help="Use LoRA for parameter-efficient fine-tuning.")  
+    parser.add_argument("--deepspeed_config", type=str, default="deepspeed_configs/ds_config.json", help="Path to deepspeed config file.")  
+    parser.add_argument("--target_modules", nargs='+', default=["q_proj", "o_proj", "k_proj", "v_proj", "gate_proj", "up_proj", "down_proj"], help="Target modules for LoRA.")  
+    parser.add_argument("--enable_quantization", type=str2bool, nargs='?', const=True, default=False, help="Enable quantization for model loading.")  
+
     return parser.parse_args()  
   
 def main(args):  
@@ -127,6 +132,11 @@ def main(args):
     ckp_dir = args.ckp_dir
     chat_model = args.chat_model  
     deepspeed = args.deepspeed  
+    enable_quantization = args.enable_quantization
+
+    print("deepspeed enabled", deepspeed)
+    print("enable_quantization ", enable_quantization)
+    print("use_4bit ", args.use_4bit)
     train_dataset = args.train_dataset  
     val_dataset = args.val_dataset  
     rank = int(os.environ.get('RANK', 0))  
@@ -137,10 +147,6 @@ def main(args):
     lora_r = args.lora_r  
     lora_alpha = args.lora_alpha  
     lora_dropout = args.lora_dropout  
-    use_4bit = args.use_4bit  
-    bnb_4bit_compute_dtype = args.bnb_4bit_compute_dtype  
-    bnb_4bit_quant_type = args.bnb_4bit_quant_type  
-    use_nested_quant = args.use_nested_quant  
     fp16 = args.fp16  
     bf16 = args.bf16  
     per_device_train_batch_size = args.train_batch_size  
@@ -154,12 +160,12 @@ def main(args):
     learning_rate = args.learning_rate  
     weight_decay = args.weight_decay  
     optim = "paged_adamw_32bit"  
-    lr_scheduler_type = "constant"  
+    lr_scheduler_type = "linear"  
     max_steps = args.max_steps  
     warmup_ratio = 0.03  
     group_by_length = True  
-    save_steps=8  # Adjust based on your needs  
-    logging_steps = 5  
+    save_steps=200  # Adjust based on your needs  
+    logging_steps = 10  
     max_seq_length = args.max_seq_length  
     packing = args.packing  
   
@@ -178,21 +184,40 @@ def main(args):
     def formatting_prompts_func(example):  
         return example['record']  
   
-    compute_dtype = getattr(torch, bnb_4bit_compute_dtype)  
-    bnb_config = BitsAndBytesConfig(  
-        load_in_4bit=use_4bit,  
-        bnb_4bit_quant_type=bnb_4bit_quant_type,  
-        bnb_4bit_compute_dtype=compute_dtype,  
-        bnb_4bit_use_double_quant=use_nested_quant,  
-    )  
+    bnb_config = None  
+    if enable_quantization:  
+        print("Using quantization for model loading.")
+        bnb_config = BitsAndBytesConfig(  
+            load_in_4bit=args.use_4bit,  
+            bnb_4bit_quant_type=args.bnb_4bit_quant_type,  
+            bnb_4bit_compute_dtype=torch.float16 if args.use_4bit else None,  
+            bnb_4bit_use_double_quant=args.use_nested_quant,  
+        )  
   
+    # Load the model  
     model = AutoModelForCausalLM.from_pretrained(  
         os.path.join(PATH, "data", "model"),  
-        low_cpu_mem_usage=True,  
-        local_files_only=True,  
-        quantization_config=bnb_config,  
-        device_map=device_map  
+        quantization_config=bnb_config if enable_quantization and args.use_lora else None,  
+        device_map=device_map,
+        torch_dtype=torch.float16,  
+
     )  
+  
+    # Apply LoRA if specified
+    peft_config = None  
+    if args.use_lora:  
+        print("Using LoRA for parameter-efficient fine-tuning, target modules:", args.target_modules)
+        peft_config = LoraConfig(  
+            lora_alpha=args.lora_alpha,  
+            lora_dropout=args.lora_dropout,  
+            r=args.lora_r,  
+            bias="none",  
+            task_type="CAUSAL_LM",  
+            target_modules=args.target_modules,  
+        )  
+        model = PeftModel(model, peft_config)  
+    else:
+        print("Training using full model's weight.")
   
     model.config.use_cache = False  
     model.config.pretraining_tp = 1  
@@ -204,16 +229,8 @@ def main(args):
     )  
     tokenizer.pad_token = tokenizer.eos_token  
     tokenizer.padding_side = "right"  
-  
-    peft_config = LoraConfig(  
-        lora_alpha=lora_alpha,  
-        lora_dropout=lora_dropout,  
-        r=lora_r,  
-        bias="none",  
-        task_type="CAUSAL_LM",  
-        target_modules=["q_proj", "o_proj", "k_proj", "v_proj", "gate_proj", "up_proj", "down_proj"],  
-    )  
-  
+    
+    # Define training arguments  
     training_arguments = TrainingArguments(  
         output_dir=output_dir,  
         num_train_epochs=num_train_epochs,  
@@ -221,18 +238,22 @@ def main(args):
         per_device_eval_batch_size=per_device_eval_batch_size,  
         gradient_accumulation_steps=gradient_accumulation_steps,  
         optim=optim,  
-        save_steps=save_steps,  
+        save_steps=save_steps if max_steps!= -1 else None,
+        save_strategy="steps" if max_steps!= -1 else "epoch",
         logging_steps=logging_steps,  
         learning_rate=learning_rate,  
         weight_decay=weight_decay,  
         fp16=fp16,  
         bf16=bf16,  
         max_grad_norm=max_grad_norm,  
-        max_steps=max_steps,  
+        max_steps=max_steps if max_steps else None,  
         warmup_ratio=warmup_ratio,  
         group_by_length=group_by_length,  
         lr_scheduler_type=lr_scheduler_type,  
-        deepspeed="deepspeed_configs/ds_config.json" if deepspeed else None,  
+        deepspeed=args.deepspeed_config if deepspeed else None,  
+        load_best_model_at_end = True,
+        eval_steps = logging_steps*20,
+        eval_strategy = "epoch" if max_steps == -1 else "steps",
     )  
     training_arguments.ddp_find_unused_parameters = False  
     response_template = "### Output:"  
@@ -247,20 +268,21 @@ def main(args):
         model=model,  
         train_dataset=train_ds,  
         eval_dataset=val_ds,  
-        peft_config=peft_config,  
-        callbacks=[MlflowLoggingCallback()],  
+        callbacks=[MlflowLoggingCallback(),early_stopping_callback],  
         max_seq_length=max_seq_length,  
         tokenizer=tokenizer,  
         args=training_arguments,  
         packing=packing,  
-        formatting_func=formatting_prompts_func,  
+        formatting_func=formatting_prompts_func,
+        # data_collator = data_collator  
     )  
+
     trainer.remove_callback(MLflowCallback)  
   
     with mlflow.start_run() as run:  
         trainer.train() 
         print("done with training")
-        dest_path = os.path.join(trained_model, 'lora')
+        dest_path = os.path.join(trained_model, 'model')
         os.makedirs(dest_path, exist_ok=True)
  
   

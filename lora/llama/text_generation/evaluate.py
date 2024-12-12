@@ -47,6 +47,15 @@ def run(scoring_pipeline, tokenizer, input_text):
     result = scoring_pipeline(input_text, generation_config=gen_config,tokenizer=tokenizer)
     return result
 
+def str2bool(v):  
+    if isinstance(v, bool):  
+        return v  
+    if v.lower() in ('yes', 'true', 't', 'y', '1'):  
+        return True  
+    elif v.lower() in ('no', 'false', 'f', 'n', '0'):  
+        return False  
+    else:  
+        raise argparse.ArgumentTypeError('Boolean value expected.')  
 
 def parse_args():
     # setup arg parser
@@ -56,12 +65,13 @@ def parse_args():
     # add arguments
     parser.add_argument("--chat_model", type=str, default="False")
     parser.add_argument("--epochs", type=int, default=1)
-    parser.add_argument("--num_examples", type=int, default=1000)
+    parser.add_argument("--num_examples", type=int, default=500)
     parser.add_argument("--model_name", type=str)
     parser.add_argument("--trained_model", type=str, default="trained_model")
     parser.add_argument("--model_dir", type=str)
     parser.add_argument("--evaluated_model", type=str)
     parser.add_argument("--test_dataset", type=str)
+    parser.add_argument("--use_lora", type=str2bool, nargs='?', const=True, default=True, help="Use LoRA for parameter-efficient fine-tuning.")  
 
     # parse args
     args = parser.parse_args()
@@ -94,37 +104,11 @@ def extract_codes(output_text):
     match = re.search(r'\b((?:\d+\.)*\d+)\b', output_text)  
     if match:  
         # Return the matched number as a string without dots  
-        return match.group(1).replace('.', '')    
+        return match.group(1).replace('.', '') 
+    else:
+        return "-1"   
 def run_scoring_pipeline(scoring_pipeline, tokenizer, batch):  
     return run(scoring_pipeline, tokenizer, batch)
-def extract_codes1(output_text):  
-    # Split the text into lines  
-    lines = output_text.split('\n')  
-      
-    # Initialize variables to store the extracted numbers  
-    chapter, heading, subheading = None, None, None  
-      
-    # Iterate over each line to find the relevant codes  
-    for line in lines:  
-        if 'Chapter:' in line:  
-            # Extract the chapter number, removing any non-numeric characters  
-            chapter_match = re.search(r'Chapter:\s*([\d.]+)', line)  
-            if chapter_match:  
-                chapter = re.sub(r'\D', '', chapter_match.group(1))  
-          
-        elif 'Heading:' in line:  
-            # Extract the heading number, removing any non-numeric characters  
-            heading_match = re.search(r'Heading:\s*([\d.]+)', line)  
-            if heading_match:  
-                heading = re.sub(r'\D', '', heading_match.group(1))  
-          
-        elif 'Subheading:' in line:  
-            # Extract the subheading number, removing any non-numeric characters  
-            subheading_match = re.search(r'Subheading:\s*([\d.]+)', line)  
-            if subheading_match:  
-                subheading = re.sub(r'\D', '', subheading_match.group(1))  
-      
-    return chapter, heading, subheading  
   
 def calculate_accuracy(true_values, predicted_values):  
     correct_chapter = sum(1 for true, pred in zip(true_values, predicted_values) if true[:2] == pred[:2])  
@@ -141,7 +125,8 @@ def calculate_accuracy(true_values, predicted_values):
 def evaluate(scoring_pipeline, tokenizer, file_path, batch_size=5):  
     records = process_jsonl(file_path)  
     # Randomly sample 1000 records  
-    sampled_records = random.sample(records, min(100, len(records)))  
+    random.seed(42)
+    sampled_records = random.sample(records, min(args.num_examples, len(records)))  
 
     inputs = [extract_input(record['record']) for record in sampled_records]  
     true_outputs = [extract_codes(extract_output(record['record'])) for record in sampled_records]
@@ -174,21 +159,35 @@ def main(args):
 
     chat_model = args.chat_model
     model_artifact_path = "mlflow_model_folder"
-    lora_weight_path = os.path.join(trained_model, "lora")
-    print("content of model path", lora_weight_path)
     
-    base_model = AutoModelForCausalLM.from_pretrained(  
-        os.path.join(model_dir, "data", "model") ,  
-        local_files_only=True,
-        torch_dtype=torch.float16,
-        device_map="auto"  
+    trained_model_path = os.path.join(trained_model, "model")
+    print("content of model path", os.listdir(trained_model_path))
 
 
-    )  
-    model = PeftModel.from_pretrained(base_model,lora_weight_path )
-    model = model.merge_and_unload()
+    if args.use_lora: 
+        model = AutoModelForCausalLM.from_pretrained(  
+            os.path.join(model_dir, "data", "model"),  
+            torch_dtype=torch.float16,  
+            device_map="auto"  
+        )  
+
+        model = PeftModel.from_pretrained(model, trained_model_path)  
+        
+        model = model.merge_and_unload()
+        print("use lora")
+    else:
+        model = AutoModelForCausalLM.from_pretrained(  
+            trained_model_path,  
+            torch_dtype=torch.float16, 
+            local_files_only=True,  
+ 
+            device_map="auto"  
+        )  
+
+        print("Use model's full weights")
+    model.eval()
     tokenizer = AutoTokenizer.from_pretrained(  
-         os.path.join(trained_model, "lora"),  
+         trained_model_path,  
         local_files_only=True,  
         device_map="auto"  
     )  
