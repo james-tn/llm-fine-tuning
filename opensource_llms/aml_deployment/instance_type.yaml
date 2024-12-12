@@ -1,0 +1,13 @@
+apiVersion: amlarc.azureml.com/v1alpha1
+kind: InstanceType
+metadata:
+  name: nc24ads
+spec:
+  resources:
+    limits:
+      cpu: "12"
+      nvidia.com/gpu: 1
+      memory: "218Gi"
+    requests:
+      cpu: "10"
+      memory: "218Gi"

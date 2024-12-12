@@ -1,0 +1,18 @@
+channels:
+  - conda-forge
+dependencies:
+  - python=3.10
+  - pip==24.2
+  - pip:
+    - accelerate
+    - peft
+    - bitsandbytes
+    - transformers==4.47.0
+    - trl
+    - scipy
+    - azureml-mlflow
+    - transformers[deepspeed]
+ 
+ 
+
+

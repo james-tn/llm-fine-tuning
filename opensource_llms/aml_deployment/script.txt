@@ -1,0 +1,29 @@
+az k8s-extension create --name ml --extension-type Microsoft.AzureML.Kubernetes --config enableTraining=True enableInference=True inferenceRouterServiceType=LoadBalancer allowInsecureConnections=True InferenceRouterHA=False --cluster-type managedClusters --cluster-name aks001 --resource-group data_engineering --scope cluster
+
+
+az aks create -g ml -n aksgpu --enable-managed-identity --node-count 1 --enable-addons monitoring --generate-ssh-keys --node-vm-size standard_nc24ads_a100_v4
+
+az aks get-credentials --resource-group ml --name aksgpu
+
+Install nvidia device on the cluster
+kubectl apply -f nvidia_device.yaml
+
+
+az aks nodepool add --resource-group ml --cluster-name aks001 --name gpunp --node-count 1 --node-vm-size standard_nc24ads_a100_v4 --node-taints sku=gpu:NoSchedule --aks-custom-headers UseGPUDedicatedVHD=true --enable-cluster-autoscaler --min-count 1 --max-count 3
+
+Install ml extention
+az k8s-extension create --name ml --extension-type Microsoft.AzureML.Kubernetes --config enableTraining=True enableInference=True inferenceRouterServiceType=LoadBalancer allowInsecureConnections=True InferenceRouterHA=False --cluster-type managedClusters --cluster-name aksgpu --resource-group ml --scope cluster
+
+az ml compute attach --resource-group ml --workspace-name ws01ent --type Kubernetes --name aksgpu --resource-id "/subscriptions/840b5c5c-3f4a-459a-94fc-6bad2a969f9d/resourcegroups/ml/providers/Microsoft.ContainerService/managedClusters/aksgpu" --identity-type SystemAssigned --no-wait --namespace gpu-resources
+
+
+
+Create instance type:
+kubectl apply -f instance_type.yaml
+
+
+az ml online-deployment delete --name blue --endpoint-name llm-k8s-gpu --yes --resource-group ml --workspace-name ws01ent
+az ml online-deployment delete --name blue --endpoint-name llm-k8s-ep --yes --resource-group ml --workspace-name ws01ent
+az ml online-deployment delete --name green --endpoint-name llm-k8s-ep --yes --resource-group ml --workspace-name ws01ent
+
+az ml online-endpoint delete --name llm-k8s-gpu --resource-group ml --workspace-name ws01ent --yes

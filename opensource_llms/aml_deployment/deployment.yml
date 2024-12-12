@@ -1,0 +1,37 @@
+$schema: https://azuremlschemas.azureedge.net/latest/managedOnlineDeployment.schema.json
+name: blue
+endpoint_name: llma2-fine-tuning
+model: azureml:llama2_13b_chat_sql_tuned:4 #replace this with your model name and version
+# model: azureml://registries/azureml-meta/models/Llama-2-7b-chat/versions/12
+code_configuration:
+  code: ./
+  scoring_script: score_chat.py
+environment: 
+  image: mcr.microsoft.com/azureml/curated/foundation-model-inference:59
+  inference_config:
+    liveness_route:
+      port: 8000
+      path: /health
+    readiness_route:
+      port: 8000
+      path: /health
+    scoring_route:
+      port: 8000
+      path: /
+instance_type: standard_nc24ads_a100_v4
+instance_count: 1
+request_settings: # This section is optional, yet important for optimizing throughput
+    max_concurrent_requests_per_instance: 1
+    request_timeout_ms: 60000
+liveness_probe:
+  initial_delay: 10
+  period: 10
+  timeout: 2
+  success_threshold: 1
+  failure_threshold: 30
+readiness_probe:
+  initial_delay: 120 # wait for 120s before we start probing, so the model can load peacefully
+  period: 10
+  timeout: 2
+  success_threshold: 1
+  failure_threshold: 30
