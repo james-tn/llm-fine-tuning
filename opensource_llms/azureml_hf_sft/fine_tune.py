@@ -5,7 +5,6 @@ import argparse
 import mlflow  
 import pandas as pd  
 import glob  
-
 from datasets import Dataset  
 from transformers import (  
     AutoModelForCausalLM,  
@@ -19,7 +18,7 @@ import shutil
 
 from deepspeed.utils.zero_to_fp32 import get_fp32_state_dict_from_zero_checkpoint, load_state_dict_from_zero_checkpoint  
 import subprocess
-from transformers.integrations import MLflowCallback  
+from transformers.integrations import MLflowCallback, is_deepspeed_zero3_enabled
 from peft import LoraConfig, PeftModel  
 from trl import SFTTrainer, DataCollatorForCompletionOnlyLM  
   
@@ -112,7 +111,7 @@ def parse_args():
     parser.add_argument("--early_stopping_patience", type=int, default=3)  
     parser.add_argument("--early_stopping_threshold", type=float, default=0.0)  
     parser.add_argument("--chat_model", type=str2bool, nargs='?', const=True, default=False)  
-    parser.add_argument("--deepspeed", type=str2bool, nargs='?', const=True, default=False)  
+    parser.add_argument("--enable_deepspeed", type=str2bool, nargs='?', const=True, default=False)  
     parser.add_argument("--use_4bit", type=str2bool, nargs='?', const=True, default=True)  
     parser.add_argument("--use_nested_quant", type=str2bool, nargs='?', const=True, default=False)  
     parser.add_argument("--fp16", type=str2bool, nargs='?', const=True, default=False)  
@@ -130,12 +129,9 @@ def main(args):
     PATH = args.model_dir  
     trained_model = args.trained_model  
     ckp_dir = args.ckp_dir
-    chat_model = args.chat_model  
-    deepspeed = args.deepspeed  
-    enable_quantization = args.enable_quantization
 
-    print("deepspeed enabled", deepspeed)
-    print("enable_quantization ", enable_quantization)
+    print("deepspeed enabled", args.enable_deepspeed)
+    print("enable_quantization ", args.enable_quantization)
     print("use_4bit ", args.use_4bit)
     train_dataset = args.train_dataset  
     val_dataset = args.val_dataset  
@@ -170,8 +166,9 @@ def main(args):
     packing = args.packing  
   
     local_rank = int(os.environ.get('LOCAL_RANK', '0'))  
-    device_map = {'': local_rank}  
-    # print("device map ", device_map)  
+    device_map = {'': local_rank} 
+    # device_map = "auto"
+    print("device map ", device_map)  
   
     train_data_dict = pd.read_json(train_dataset, lines=True).to_dict(orient="records")  
     train_records = [item["record"] for item in train_data_dict]  
@@ -183,9 +180,33 @@ def main(args):
   
     def formatting_prompts_func(example):  
         return example['record']  
-  
+   # Define training arguments  
+    training_arguments = TrainingArguments(  
+        output_dir=output_dir,  
+        num_train_epochs=num_train_epochs,  
+        per_device_train_batch_size=per_device_train_batch_size,  
+        per_device_eval_batch_size=per_device_eval_batch_size,  
+        gradient_accumulation_steps=gradient_accumulation_steps,  
+        optim=optim,  
+        save_steps=save_steps if max_steps!= -1 else None,
+        save_strategy="steps" if max_steps!= -1 else "epoch",
+        logging_steps=logging_steps,  
+        learning_rate=learning_rate,  
+        weight_decay=weight_decay,  
+        fp16=fp16,  
+        bf16=bf16,  
+        max_grad_norm=max_grad_norm,  
+        max_steps=max_steps if max_steps else None,  
+        warmup_ratio=warmup_ratio,  
+        group_by_length=group_by_length,  
+        lr_scheduler_type=lr_scheduler_type,  
+        deepspeed=args.deepspeed_config if args.enable_deepspeed else None,  
+        load_best_model_at_end = True,
+        eval_steps = logging_steps*20,
+        eval_strategy = "epoch" if max_steps == -1 else "steps",
+    )  
     bnb_config = None  
-    if enable_quantization:  
+    if args.enable_quantization and args.use_lora:  
         print("Using quantization for model loading.")
         bnb_config = BitsAndBytesConfig(  
             load_in_4bit=args.use_4bit,  
@@ -197,8 +218,8 @@ def main(args):
     # Load the model  
     model = AutoModelForCausalLM.from_pretrained(  
         os.path.join(PATH, "data", "model"),  
-        quantization_config=bnb_config if enable_quantization and args.use_lora else None,  
-        device_map=device_map,
+        quantization_config=bnb_config if args.enable_quantization and args.use_lora else None,  
+        device_map=device_map if not is_deepspeed_zero3_enabled() else None,
         torch_dtype=torch.float16,  
 
     )  
@@ -225,36 +246,12 @@ def main(args):
     tokenizer = AutoTokenizer.from_pretrained(  
         os.path.join(PATH, "data", "model"),  
         local_files_only=True,  
-        device_map=device_map  
+        device_map=device_map if not is_deepspeed_zero3_enabled() else None,
     )  
     tokenizer.pad_token = tokenizer.eos_token  
     tokenizer.padding_side = "right"  
     
-    # Define training arguments  
-    training_arguments = TrainingArguments(  
-        output_dir=output_dir,  
-        num_train_epochs=num_train_epochs,  
-        per_device_train_batch_size=per_device_train_batch_size,  
-        per_device_eval_batch_size=per_device_eval_batch_size,  
-        gradient_accumulation_steps=gradient_accumulation_steps,  
-        optim=optim,  
-        save_steps=save_steps if max_steps!= -1 else None,
-        save_strategy="steps" if max_steps!= -1 else "epoch",
-        logging_steps=logging_steps,  
-        learning_rate=learning_rate,  
-        weight_decay=weight_decay,  
-        fp16=fp16,  
-        bf16=bf16,  
-        max_grad_norm=max_grad_norm,  
-        max_steps=max_steps if max_steps else None,  
-        warmup_ratio=warmup_ratio,  
-        group_by_length=group_by_length,  
-        lr_scheduler_type=lr_scheduler_type,  
-        deepspeed=args.deepspeed_config if deepspeed else None,  
-        load_best_model_at_end = True,
-        eval_steps = logging_steps*20,
-        eval_strategy = "epoch" if max_steps == -1 else "steps",
-    )  
+ 
     training_arguments.ddp_find_unused_parameters = False  
     response_template = "### Output:"  
     data_collator = DataCollatorForCompletionOnlyLM(response_template, tokenizer=tokenizer)  
@@ -263,16 +260,17 @@ def main(args):
         early_stopping_patience=args.early_stopping_patience,  
         early_stopping_threshold=args.early_stopping_threshold  
     )  
-  
+    print("is_deepspeed_zero3_enabled() ", is_deepspeed_zero3_enabled())
+
     trainer = SFTTrainer(  
         model=model,  
         train_dataset=train_ds,  
         eval_dataset=val_ds,  
         callbacks=[MlflowLoggingCallback(),early_stopping_callback],  
-        max_seq_length=max_seq_length,  
+        # max_seq_length=max_seq_length,  
         tokenizer=tokenizer,  
         args=training_arguments,  
-        packing=packing,  
+        # packing=packing,  
         formatting_func=formatting_prompts_func,
         # data_collator = data_collator  
     )  
@@ -288,7 +286,7 @@ def main(args):
   
         if rank == 0:  
             # Clear memory  
-            if not deepspeed:  
+            if not args.enable_deepspeed:  
                 # Save the model
                 trainer.model.save_pretrained(dest_path)
                 tokenizer.save_pretrained(dest_path)    
