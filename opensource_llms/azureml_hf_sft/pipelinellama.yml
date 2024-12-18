@@ -1,21 +1,21 @@
 $schema: https://azuremlschemas.azureedge.net/latest/pipelineJob.schema.json  
 type: pipeline  
-experiment_name: hscode_llama32-3B_FW 
+experiment_name: hscode_llama32-3B_FW  
 description: hscode_llama32-3B_FW  
 inputs:  
   model_name: hscode_llama32-3B_FW  
   chat_model: False  
-  enable_deepspeed: True
-  max_steps: 100
+  enable_deepspeed: True  
+  max_steps: 100  
   train_batch_size: 5  
   val_batch_size: 5  
   test_batch_size: 5  
   lora_r: 256  
   lora_alpha: 16  
   lora_dropout: 0.05  
-  use_lora: True  # Added use_lora parameter  
-  deepspeed_config: deepspeed_configs/ds_config.json
-  target_modules: q_proj o_proj k_proj v_proj gate_proj up_proj down_proj
+  use_lora: False  # Added use_lora parameter  
+  deepspeed_config: deepspeed_configs/ds_config.json  
+  target_modules: q_proj o_proj k_proj v_proj gate_proj up_proj down_proj  
   enable_quantization: True  
   use_4bit: True  
   bnb_4bit_compute_dtype: float16  
@@ -31,6 +31,7 @@ inputs:
   learning_rate: 2e-4  
   weight_decay: 0.001  
   epochs: 3  
+  verbosity: INFO  # Added verbosity parameter  
   train_dataset:  
     mode: ro_mount  
     path: azureml:hscode_train_short_ds:4  
@@ -44,20 +45,16 @@ inputs:
     path: azureml:hscode_test_short_ds:4  
     type: uri_file  
   model_dir:  
-    # path: azureml://registries/azureml-meta/models/Meta-Llama-3.1-8B/versions/4
-    path: azureml://registries/azureml-meta/models/Llama-3.2-3B/versions/3
-    # path: azureml://registries/azureml-meta/models/Meta-Llama-3-70B/versions/7  
-    # path: azureml://registries/azureml/models/mistralai-Mixtral-8x7B-v01/versions/15
+    path: azureml://registries/azureml-meta/models/Llama-3.2-3B/versions/3  
 outputs:  
   trained_model:  
   ckp_dir:  
   evaluated_model:  
-  
 jobs:  
   train:  
     type: command  
     code: ./  
-    command: >-  
+    command: >  
       python fine_tune.py  
       --model_dir ${{inputs.model_dir}}  
       --ckp_dir ${{outputs.ckp_dir}}  
@@ -74,7 +71,7 @@ jobs:
       --lora_r ${{inputs.lora_r}}  
       --lora_alpha ${{inputs.lora_alpha}}  
       --lora_dropout ${{inputs.lora_dropout}}  
-      --use_lora ${{inputs.use_lora}}  # Pass use_lora to the script  
+      --use_lora ${{inputs.use_lora}}  
       --use_4bit ${{inputs.use_4bit}}  
       --bnb_4bit_compute_dtype ${{inputs.bnb_4bit_compute_dtype}}  
       --bnb_4bit_quant_type ${{inputs.bnb_4bit_quant_type}}  
@@ -90,6 +87,7 @@ jobs:
       --weight_decay ${{inputs.weight_decay}}  
       --deepspeed_config ${{inputs.deepspeed_config}}  
       --target_modules ${{inputs.target_modules}}  
+      --verbosity ${{inputs.verbosity}}  # Pass verbosity to the script  
     inputs:  
       epochs: ${{parent.inputs.epochs}}  
       max_steps: ${{parent.inputs.max_steps}}  
@@ -103,7 +101,7 @@ jobs:
       lora_r: ${{parent.inputs.lora_r}}  
       lora_alpha: ${{parent.inputs.lora_alpha}}  
       lora_dropout: ${{parent.inputs.lora_dropout}}  
-      use_lora: ${{parent.inputs.use_lora}}  # Ensure use_lora is included  
+      use_lora: ${{parent.inputs.use_lora}}  
       use_4bit: ${{parent.inputs.use_4bit}}  
       bnb_4bit_compute_dtype: ${{parent.inputs.bnb_4bit_compute_dtype}}  
       bnb_4bit_quant_type: ${{parent.inputs.bnb_4bit_quant_type}}  
@@ -120,22 +118,24 @@ jobs:
       deepspeed_config: ${{parent.inputs.deepspeed_config}}  
       target_modules: ${{parent.inputs.target_modules}}  
       enable_quantization: ${{parent.inputs.enable_quantization}}  
-    environment: 
+      verbosity: ${{parent.inputs.verbosity}}  
+    environment:  
       conda_file: ./conda.yml  
-      image: mcr.microsoft.com/azureml/curated/acpt-pytorch-2.2-cuda12.1 
+      image: mcr.microsoft.com/azureml/curated/acpt-pytorch-2.2-cuda12.1  
     outputs:  
       output_dir: ${{parent.outputs.trained_model}}  
       ckp_dir: ${{parent.outputs.ckp_dir}}  
     compute: azureml:nc40h100  
     distribution:  
       type: pytorch  
-      process_count_per_instance: 1 
+      process_count_per_instance: 1  
     resources:  
-      instance_count: 1    
+      instance_count: 1  
+  
   evaluate:  
     type: command  
     code: ./  
-    command: >-  
+    command: >  
       python evaluate.py  
       --trained_model ${{inputs.trained_model}}  
       --model_name ${{inputs.model_name}}  
@@ -143,16 +143,16 @@ jobs:
       --test_dataset ${{inputs.test_dataset}}  
       --model_dir ${{inputs.model_dir}}  
       --evaluated_model ${{outputs.evaluated_model}}  
-      --use_lora ${{inputs.use_lora}}  # Pass use_lora to the evaluation script if needed  
-      --enable_quantization ${{inputs.enable_quantization}}  
+      --use_lora ${{inputs.use_lora}}  
+      --verbosity ${{inputs.verbosity}}  # Pass verbosity to the evaluation script  
     inputs:  
       trained_model: ${{parent.jobs.train.outputs.output_dir}}  
       model_name: ${{parent.inputs.model_name}}  
       test_dataset: ${{parent.inputs.test_dataset}}  
       chat_model: ${{parent.inputs.chat_model}}  
       model_dir: ${{parent.inputs.model_dir}}  
-      use_lora: ${{parent.inputs.use_lora}}  # Ensure use_lora is included  
-      enable_quantization: ${{parent.inputs.enable_quantization}}  
+      use_lora: ${{parent.inputs.use_lora}}  
+      verbosity: ${{parent.inputs.verbosity}}  
     outputs:  
       evaluated_model: ${{parent.outputs.evaluated_model}}  
     environment:  

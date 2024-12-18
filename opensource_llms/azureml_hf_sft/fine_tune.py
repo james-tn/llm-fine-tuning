@@ -11,17 +11,17 @@ from transformers import (
     AutoTokenizer,  
     BitsAndBytesConfig,  
     TrainingArguments,  
-    TrainerCallback,
+    TrainerCallback,  
     Trainer  
 )  
 import shutil  
-import logging
-
+import logging  
 from deepspeed.utils.zero_to_fp32 import get_fp32_state_dict_from_zero_checkpoint, load_state_dict_from_zero_checkpoint  
-import subprocess
-from transformers.integrations import MLflowCallback, is_deepspeed_zero3_enabled
+import subprocess  
+from transformers.integrations import MLflowCallback, is_deepspeed_zero3_enabled  
 from peft import LoraConfig, PeftModel  
-from trl import SFTTrainer, DataCollatorForCompletionOnlyLM,SFTConfig  
+from trl import SFTTrainer, DataCollatorForCompletionOnlyLM, SFTConfig  
+  
   
 def str2bool(v):  
     if isinstance(v, bool):  
@@ -33,43 +33,33 @@ def str2bool(v):
     else:  
         raise argparse.ArgumentTypeError('Boolean value expected.')  
   
-def get_latest_checkpoint_tag(checkpoint_dir):  
-    """  
-    Retrieves the latest checkpoint tag by sorting the directory names.  
   
-    :param checkpoint_dir: The path to the directory containing checkpoint subdirectories.  
-    :return: The tag of the latest checkpoint.  
-    """  
-    # List all subdirectories in the checkpoint directory  
+def get_latest_checkpoint_tag(checkpoint_dir):  
+    """Retrieves the latest checkpoint tag by sorting the directory names."""  
     subdirs = [d for d in os.listdir(checkpoint_dir) if os.path.isdir(os.path.join(checkpoint_dir, d))]  
-      
     if not subdirs:  
         raise FileNotFoundError("No checkpoint directories found in the specified directory.")  
-      
-    # Sort the directory names  
     subdirs.sort()  
-    logging.info("content of checkpoint_dir ", subdirs)
-    logging.info("content inside latest checkpoint ", os.listdir(os.path.join(checkpoint_dir, subdirs[-1])))
-    # list the content of the directries under subdirs[-1]
-    sub_subdirs = [d for d in os.listdir(os.path.join(checkpoint_dir, subdirs[-1])) if os.path.isdir(os.path.join(checkpoint_dir, subdirs[-1], d))]
-    for sub_subdir in sub_subdirs:
-        logging.info("sub sub inside latest checkpoint ", os.listdir(os.path.join(checkpoint_dir, subdirs[-1], sub_subdir)))
-   
-  
-    # Return the last directory in the sorted list, which should be the latest  
+    logging.info("content of checkpoint_dir: %s", subdirs)  
+    logging.info("content inside latest checkpoint: %s", os.listdir(os.path.join(checkpoint_dir, subdirs[-1])))  
+    sub_subdirs = [d for d in os.listdir(os.path.join(checkpoint_dir, subdirs[-1])) if os.path.isdir(os.path.join(checkpoint_dir, subdirs[-1], d))]  
+    for sub_subdir in sub_subdirs:  
+        logging.info("sub sub inside latest checkpoint: %s", os.listdir(os.path.join(checkpoint_dir, subdirs[-1], sub_subdir)))  
     latest_tag = subdirs[-1]  
     return latest_tag  
   
-
+  
 class MlflowLoggingCallback(TrainerCallback):  
     def on_log(self, args, state, control, logs=None, **kwargs):  
-        if logs is not None:
+        if logs is not None:  
             try:  
                 mlflow.log_metrics(logs, step=state.global_step)  
-                if hasattr(state, 'epoch'):
-                    mlflow.log_metric('epoch', state.epoch) 
-            except Exception as e:
+                if hasattr(state, 'epoch'):  
+                    mlflow.log_metric('epoch', state.epoch)  
+            except Exception as e:  
                 logging.error("Failed to log metrics to mlflow", exc_info=True)  
+  
+  
 class EarlyStoppingCallback(TrainerCallback):  
     def __init__(self, early_stopping_patience=3, early_stopping_threshold=0.0):  
         self.early_stopping_patience = early_stopping_patience  
@@ -91,6 +81,7 @@ class EarlyStoppingCallback(TrainerCallback):
                 if self.patience_counter >= self.early_stopping_patience:  
                     control.should_training_stop = True  
                     logging.info("Early stopping triggered.")  
+  
   
 def parse_args():  
     parser = argparse.ArgumentParser()  
@@ -127,20 +118,21 @@ def parse_args():
     parser.add_argument("--deepspeed_config", type=str, default="deepspeed_configs/ds_config.json", help="Path to deepspeed config file.")  
     parser.add_argument("--target_modules", nargs='+', default=["q_proj", "o_proj", "k_proj", "v_proj", "gate_proj", "up_proj", "down_proj"], help="Target modules for LoRA.")  
     parser.add_argument("--enable_quantization", type=str2bool, nargs='?', const=True, default=False, help="Enable quantization for model loading.")  
-
+    parser.add_argument("--verbosity", type=str, choices=['DEBUG', 'INFO', 'WARNING', 'ERROR', 'CRITICAL'], default='INFO', help="Set the logging verbosity level.")  
     return parser.parse_args()  
   
+  
 def main(args):  
+    logging.basicConfig(level=getattr(logging, args.verbosity.upper()))  
+  
     PATH = args.model_dir  
     trained_model = args.trained_model  
-    ckp_dir = args.ckp_dir
-
-    logging.info("deepspeed enabled", args.enable_deepspeed)
+    ckp_dir = args.ckp_dir  
+    logging.info("deepspeed enabled: %s", args.enable_deepspeed)  
     train_dataset = args.train_dataset  
     val_dataset = args.val_dataset  
     rank = int(os.environ.get('RANK', 0))  
-  
-    logging.info("rank ", rank)  
+    logging.info("rank: %d", rank)  
   
     new_model = "fine_tuned_model"  
     lora_r = args.lora_r  
@@ -163,14 +155,13 @@ def main(args):
     max_steps = args.max_steps  
     warmup_ratio = 0.03  
     group_by_length = True  
-    save_steps=200  # Adjust based on your needs  
+    save_steps = 200  
     logging_steps = 10  
     packing = args.packing  
   
     local_rank = int(os.environ.get('LOCAL_RANK', '0'))  
-    device_map = {'': local_rank} 
-    # device_map = "auto"
-    logging.info("device map ", device_map)  
+    device_map = {'': local_rank}  
+    logging.info("device map: %s", device_map)  
   
     train_data_dict = pd.read_json(train_dataset, lines=True).to_dict(orient="records")  
     train_records = [item["record"] for item in train_data_dict]  
@@ -182,7 +173,8 @@ def main(args):
   
     def formatting_prompts_func(example):  
         return example['record']  
-   # Define training arguments  
+    load_best_model_at_the_end = None if (args.enable_deepspeed and args.use_lora) else True
+    logging.info("load_best_model_at_the_end  %s", load_best_model_at_the_end)
     training_arguments = SFTConfig(  
         output_dir=output_dir,  
         num_train_epochs=num_train_epochs,  
@@ -190,8 +182,8 @@ def main(args):
         per_device_eval_batch_size=per_device_eval_batch_size,  
         gradient_accumulation_steps=gradient_accumulation_steps,  
         optim=optim,  
-        save_steps=save_steps if max_steps!= -1 else None,
-        save_strategy="steps" if max_steps!= -1 else "epoch",
+        save_steps=save_steps if max_steps != -1 else None,  
+        save_strategy="steps" if max_steps != -1 else "epoch",  
         logging_steps=logging_steps,  
         learning_rate=learning_rate,  
         weight_decay=weight_decay,  
@@ -203,17 +195,16 @@ def main(args):
         group_by_length=group_by_length,  
         lr_scheduler_type=lr_scheduler_type,  
         deepspeed=args.deepspeed_config if args.enable_deepspeed else None,  
-        load_best_model_at_end = True if (args.enable_deepspeed and args.use_lora) else None, #there's a bug so disable this in case lora and deepspeed are used together.
-        eval_steps = logging_steps*20,
-        eval_strategy = "epoch" if max_steps == -1 else "steps",
-        max_seq_length= args.max_seq_length,
-        
-
-        packing= args.packing
+        load_best_model_at_end=load_best_model_at_the_end,  
+        eval_steps=logging_steps * 20,  
+        eval_strategy="epoch" if max_steps == -1 else "steps",  
+        max_seq_length=args.max_seq_length,  
+        packing=args.packing  
     )  
+  
     bnb_config = None  
     if args.enable_quantization and args.use_lora:  
-        logging.info("Using quantization for model loading.")
+        logging.info("Using quantization for model loading.")  
         bnb_config = BitsAndBytesConfig(  
             load_in_4bit=args.use_4bit,  
             bnb_4bit_quant_type=args.bnb_4bit_quant_type,  
@@ -221,19 +212,16 @@ def main(args):
             bnb_4bit_use_double_quant=args.use_nested_quant,  
         )  
   
-    # Load the model  
     model = AutoModelForCausalLM.from_pretrained(  
         os.path.join(PATH, "data", "model"),  
         quantization_config=bnb_config if args.enable_quantization and args.use_lora else None,  
-        device_map=device_map if not is_deepspeed_zero3_enabled() else None,
+        device_map=device_map if not is_deepspeed_zero3_enabled() else None,  
         torch_dtype=torch.float16,  
-
     )  
   
-    # Apply LoRA if specified
     peft_config = None  
     if args.use_lora:  
-        print("Using LoRA for parameter-efficient fine-tuning, target modules:", args.target_modules)
+        logging.info("Using LoRA for parameter-efficient fine-tuning, target modules: %s", args.target_modules)  
         peft_config = LoraConfig(  
             lora_alpha=args.lora_alpha,  
             lora_dropout=args.lora_dropout,  
@@ -243,97 +231,82 @@ def main(args):
             target_modules=args.target_modules,  
         )  
         model = PeftModel(model, peft_config)  
-    else:
-        logging.info("Training using full model's weight.")
-  
+    else:  
+        logging.info("Training using full model's weight.")  
     model.config.use_cache = False  
     model.config.pretraining_tp = 1  
   
     tokenizer = AutoTokenizer.from_pretrained(  
         os.path.join(PATH, "data", "model"),  
         local_files_only=True,  
-        device_map=device_map if not is_deepspeed_zero3_enabled() else None,
+        device_map=device_map if not is_deepspeed_zero3_enabled() else None,  
     )  
     tokenizer.pad_token = tokenizer.eos_token  
     tokenizer.padding_side = "right"  
-    
- 
-    # training_arguments.ddp_find_unused_parameters = False  
-    # response_template = "### Output:"  
-    # data_collator = DataCollatorForCompletionOnlyLM(response_template, tokenizer=tokenizer)  
   
     early_stopping_callback = EarlyStoppingCallback(  
         early_stopping_patience=args.early_stopping_patience,  
         early_stopping_threshold=args.early_stopping_threshold  
     )  
-    logging.info("is_deepspeed_zero3_enabled() ", is_deepspeed_zero3_enabled())
-
+    logging.info("is_deepspeed_zero3_enabled(): %s", is_deepspeed_zero3_enabled())  
+  
     trainer = SFTTrainer(  
         model=model,  
         train_dataset=train_ds,  
         eval_dataset=val_ds,  
-        callbacks=[MlflowLoggingCallback(),early_stopping_callback],  
+        callbacks=[MlflowLoggingCallback(), early_stopping_callback],  
         tokenizer=tokenizer,  
         args=training_arguments,  
-        formatting_func=formatting_prompts_func,
-        # data_collator = data_collator  
+        formatting_func=formatting_prompts_func,  
     )  
-
+  
     trainer.remove_callback(MLflowCallback)  
   
     with mlflow.start_run() as run:  
-        trainer.train() 
-        logging.info("done with training")
-        dest_path = os.path.join(trained_model, 'model')
-        os.makedirs(dest_path, exist_ok=True)
- 
+        trainer.train()  
+        logging.info("done with training")  
+        dest_path = os.path.join(trained_model, 'model')  
+        os.makedirs(dest_path, exist_ok=True)  
   
         if rank == 0:  
-            # Clear memory  
             if not args.enable_deepspeed:  
-                # Save the model
-                trainer.model.save_pretrained(dest_path)
-                tokenizer.save_pretrained(dest_path)    
-                return
-
+                trainer.model.save_pretrained(dest_path)  
+                tokenizer.save_pretrained(dest_path)  
+                return  
+  
             del model  
             del trainer  
             import gc  
             gc.collect()  
-            ckp_tag = get_latest_checkpoint_tag(ckp_dir)
-            
-            ckp_dir = os.path.join(ckp_dir, ckp_tag)
-            try:
-                subprocess.run(
-                    ['python', 'zero_to_fp32.py', '.', ckp_dir],
-                    cwd=ckp_dir,
-                    stdout=subprocess.PIPE,
-                    stderr=subprocess.PIPE,
-                    text=True,
-                    check=True
-                )
-            except Exception as e:
+            ckp_tag = get_latest_checkpoint_tag(ckp_dir)  
+  
+            ckp_dir = os.path.join(ckp_dir, ckp_tag)  
+            try:  
+                subprocess.run(  
+                    ['python', 'zero_to_fp32.py', '.', ckp_dir],  
+                    cwd=ckp_dir,  
+                    stdout=subprocess.PIPE,  
+                    stderr=subprocess.PIPE,  
+                    text=True,  
+                    check=True  
+                )  
+            except Exception as e:  
                 logging.error("Failed to convert zero to fp32", exc_info=True)  
-
-            #copy from the converted_fp32 to the trained_model
-            # Copy all bin files from the converted_fp32 to the trained_model  
+  
             bin_files_pattern = os.path.join(ckp_dir, "pytorch_model-*.bin")  
             for fp32_output_path in glob.glob(bin_files_pattern):  
                 shutil.copy(fp32_output_path, dest_path)  
-            # Copy config.json and tokenizer files to dest_path
-            model_files = ['adapter_config.json','adapter_model.safetensors','tokenizer.json', 'tokenizer_config.json', 'special_tokens_map.json']
-
-            for file_name in model_files:
-                src_file = os.path.join(ckp_dir, file_name)
-                if os.path.exists(src_file):
-                    shutil.copy(src_file, dest_path)
-                else:
-                    logging.info(f"Warning: {file_name} not found in {ckp_dir}")
-
-                
-
+  
+            model_files = ['config.json','adapter_config.json', 'adapter_model.safetensors', 'tokenizer.json', 'tokenizer_config.json', 'special_tokens_map.json', 'pytorch_model.bin.index.json']  
+            for file_name in model_files:  
+                src_file = os.path.join(ckp_dir, file_name)  
+                if os.path.exists(src_file):  
+                    shutil.copy(src_file, dest_path)  
+                else:  
+                    logging.info(f"Warning: {file_name} not found in {ckp_dir}")  
+  
         else:  
-            logging.info("at rank ", rank)  
+            logging.info("at rank: %d", rank)  
   
 if __name__ == "__main__":  
     args = parse_args()  
