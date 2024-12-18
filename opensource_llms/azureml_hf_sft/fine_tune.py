@@ -15,12 +15,13 @@ from transformers import (
     Trainer  
 )  
 import shutil  
+import logging
 
 from deepspeed.utils.zero_to_fp32 import get_fp32_state_dict_from_zero_checkpoint, load_state_dict_from_zero_checkpoint  
 import subprocess
 from transformers.integrations import MLflowCallback, is_deepspeed_zero3_enabled
 from peft import LoraConfig, PeftModel  
-from trl import SFTTrainer, DataCollatorForCompletionOnlyLM  
+from trl import SFTTrainer, DataCollatorForCompletionOnlyLM,SFTConfig  
   
 def str2bool(v):  
     if isinstance(v, bool):  
@@ -47,24 +48,28 @@ def get_latest_checkpoint_tag(checkpoint_dir):
       
     # Sort the directory names  
     subdirs.sort()  
-    print("content of checkpoint_dir ", subdirs)
-    print("content inside latest checkpoint ", os.listdir(os.path.join(checkpoint_dir, subdirs[-1])))
+    logging.info("content of checkpoint_dir ", subdirs)
+    logging.info("content inside latest checkpoint ", os.listdir(os.path.join(checkpoint_dir, subdirs[-1])))
     # list the content of the directries under subdirs[-1]
     sub_subdirs = [d for d in os.listdir(os.path.join(checkpoint_dir, subdirs[-1])) if os.path.isdir(os.path.join(checkpoint_dir, subdirs[-1], d))]
     for sub_subdir in sub_subdirs:
-        print("sub sub inside latest checkpoint ", os.listdir(os.path.join(checkpoint_dir, subdirs[-1], sub_subdir)))
+        logging.info("sub sub inside latest checkpoint ", os.listdir(os.path.join(checkpoint_dir, subdirs[-1], sub_subdir)))
    
   
     # Return the last directory in the sorted list, which should be the latest  
     latest_tag = subdirs[-1]  
     return latest_tag  
   
+
 class MlflowLoggingCallback(TrainerCallback):  
     def on_log(self, args, state, control, logs=None, **kwargs):  
-        if logs is not None:  
-            mlflow.log_metrics(logs, step=state.global_step)  
-            mlflow.log_metric('epoch', state.epoch)  
-  
+        if logs is not None:
+            try:  
+                mlflow.log_metrics(logs, step=state.global_step)  
+                if hasattr(state, 'epoch'):
+                    mlflow.log_metric('epoch', state.epoch) 
+            except Exception as e:
+                logging.error("Failed to log metrics to mlflow", exc_info=True)  
 class EarlyStoppingCallback(TrainerCallback):  
     def __init__(self, early_stopping_patience=3, early_stopping_threshold=0.0):  
         self.early_stopping_patience = early_stopping_patience  
@@ -79,13 +84,13 @@ class EarlyStoppingCallback(TrainerCallback):
                 self.best_metric = current_metric  
                 self.patience_counter = 0  
                 control.should_save = True  
-                print(f"New best model found with eval_loss: {current_metric}")  
+                logging.info(f"New best model found with eval_loss: {current_metric}")  
             else:  
                 self.patience_counter += 1  
-                print(f"No improvement in eval_loss for {self.patience_counter} evaluations.")  
+                logging.info(f"No improvement in eval_loss for {self.patience_counter} evaluations.")  
                 if self.patience_counter >= self.early_stopping_patience:  
                     control.should_training_stop = True  
-                    print("Early stopping triggered.")  
+                    logging.info("Early stopping triggered.")  
   
 def parse_args():  
     parser = argparse.ArgumentParser()  
@@ -130,14 +135,12 @@ def main(args):
     trained_model = args.trained_model  
     ckp_dir = args.ckp_dir
 
-    print("deepspeed enabled", args.enable_deepspeed)
-    print("enable_quantization ", args.enable_quantization)
-    print("use_4bit ", args.use_4bit)
+    logging.info("deepspeed enabled", args.enable_deepspeed)
     train_dataset = args.train_dataset  
     val_dataset = args.val_dataset  
     rank = int(os.environ.get('RANK', 0))  
   
-    print("rank ", rank)  
+    logging.info("rank ", rank)  
   
     new_model = "fine_tuned_model"  
     lora_r = args.lora_r  
@@ -162,13 +165,12 @@ def main(args):
     group_by_length = True  
     save_steps=200  # Adjust based on your needs  
     logging_steps = 10  
-    max_seq_length = args.max_seq_length  
     packing = args.packing  
   
     local_rank = int(os.environ.get('LOCAL_RANK', '0'))  
     device_map = {'': local_rank} 
     # device_map = "auto"
-    print("device map ", device_map)  
+    logging.info("device map ", device_map)  
   
     train_data_dict = pd.read_json(train_dataset, lines=True).to_dict(orient="records")  
     train_records = [item["record"] for item in train_data_dict]  
@@ -181,7 +183,7 @@ def main(args):
     def formatting_prompts_func(example):  
         return example['record']  
    # Define training arguments  
-    training_arguments = TrainingArguments(  
+    training_arguments = SFTConfig(  
         output_dir=output_dir,  
         num_train_epochs=num_train_epochs,  
         per_device_train_batch_size=per_device_train_batch_size,  
@@ -201,13 +203,17 @@ def main(args):
         group_by_length=group_by_length,  
         lr_scheduler_type=lr_scheduler_type,  
         deepspeed=args.deepspeed_config if args.enable_deepspeed else None,  
-        load_best_model_at_end = True,
+        load_best_model_at_end = True if (args.enable_deepspeed and args.use_lora) else None, #there's a bug so disable this in case lora and deepspeed are used together.
         eval_steps = logging_steps*20,
         eval_strategy = "epoch" if max_steps == -1 else "steps",
+        max_seq_length= args.max_seq_length,
+        
+
+        packing= args.packing
     )  
     bnb_config = None  
     if args.enable_quantization and args.use_lora:  
-        print("Using quantization for model loading.")
+        logging.info("Using quantization for model loading.")
         bnb_config = BitsAndBytesConfig(  
             load_in_4bit=args.use_4bit,  
             bnb_4bit_quant_type=args.bnb_4bit_quant_type,  
@@ -238,7 +244,7 @@ def main(args):
         )  
         model = PeftModel(model, peft_config)  
     else:
-        print("Training using full model's weight.")
+        logging.info("Training using full model's weight.")
   
     model.config.use_cache = False  
     model.config.pretraining_tp = 1  
@@ -252,25 +258,23 @@ def main(args):
     tokenizer.padding_side = "right"  
     
  
-    training_arguments.ddp_find_unused_parameters = False  
-    response_template = "### Output:"  
-    data_collator = DataCollatorForCompletionOnlyLM(response_template, tokenizer=tokenizer)  
+    # training_arguments.ddp_find_unused_parameters = False  
+    # response_template = "### Output:"  
+    # data_collator = DataCollatorForCompletionOnlyLM(response_template, tokenizer=tokenizer)  
   
     early_stopping_callback = EarlyStoppingCallback(  
         early_stopping_patience=args.early_stopping_patience,  
         early_stopping_threshold=args.early_stopping_threshold  
     )  
-    print("is_deepspeed_zero3_enabled() ", is_deepspeed_zero3_enabled())
+    logging.info("is_deepspeed_zero3_enabled() ", is_deepspeed_zero3_enabled())
 
     trainer = SFTTrainer(  
         model=model,  
         train_dataset=train_ds,  
         eval_dataset=val_ds,  
         callbacks=[MlflowLoggingCallback(),early_stopping_callback],  
-        # max_seq_length=max_seq_length,  
         tokenizer=tokenizer,  
         args=training_arguments,  
-        # packing=packing,  
         formatting_func=formatting_prompts_func,
         # data_collator = data_collator  
     )  
@@ -279,7 +283,7 @@ def main(args):
   
     with mlflow.start_run() as run:  
         trainer.train() 
-        print("done with training")
+        logging.info("done with training")
         dest_path = os.path.join(trained_model, 'model')
         os.makedirs(dest_path, exist_ok=True)
  
@@ -299,14 +303,18 @@ def main(args):
             ckp_tag = get_latest_checkpoint_tag(ckp_dir)
             
             ckp_dir = os.path.join(ckp_dir, ckp_tag)
-            subprocess.run(
-                ['python', 'zero_to_fp32.py', '.', ckp_dir],
-                cwd=ckp_dir,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
-                text=True,
-                check=True
-            )
+            try:
+                subprocess.run(
+                    ['python', 'zero_to_fp32.py', '.', ckp_dir],
+                    cwd=ckp_dir,
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.PIPE,
+                    text=True,
+                    check=True
+                )
+            except Exception as e:
+                logging.error("Failed to convert zero to fp32", exc_info=True)  
+
             #copy from the converted_fp32 to the trained_model
             # Copy all bin files from the converted_fp32 to the trained_model  
             bin_files_pattern = os.path.join(ckp_dir, "pytorch_model-*.bin")  
@@ -320,12 +328,12 @@ def main(args):
                 if os.path.exists(src_file):
                     shutil.copy(src_file, dest_path)
                 else:
-                    print(f"Warning: {file_name} not found in {ckp_dir}")
+                    logging.info(f"Warning: {file_name} not found in {ckp_dir}")
 
                 
 
         else:  
-            print("at rank ", rank)  
+            logging.info("at rank ", rank)  
   
 if __name__ == "__main__":  
     args = parse_args()  

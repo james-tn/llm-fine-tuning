@@ -1,19 +1,19 @@
 $schema: https://azuremlschemas.azureedge.net/latest/pipelineJob.schema.json  
 type: pipeline  
-experiment_name: hscode_llama70B-70B_FW 
-description: hscode_llama31-70B_FW  
+experiment_name: hscode_llama32-3B_FW 
+description: hscode_llama32-3B_FW  
 inputs:  
-  model_name: hscode_llama31-70B_FW  
+  model_name: hscode_llama32-3B_FW  
   chat_model: False  
   enable_deepspeed: True
-  max_steps: 1400
+  max_steps: 100
   train_batch_size: 5  
   val_batch_size: 5  
   test_batch_size: 5  
   lora_r: 256  
   lora_alpha: 16  
   lora_dropout: 0.05  
-  use_lora: False  # Added use_lora parameter  
+  use_lora: True  # Added use_lora parameter  
   deepspeed_config: deepspeed_configs/ds_config.json
   target_modules: q_proj o_proj k_proj v_proj gate_proj up_proj down_proj
   enable_quantization: True  
@@ -45,8 +45,8 @@ inputs:
     type: uri_file  
   model_dir:  
     # path: azureml://registries/azureml-meta/models/Meta-Llama-3.1-8B/versions/4
-    mode: ro_mount
-    path: azureml://registries/azureml-meta/models/Meta-Llama-3-70B/versions/7  
+    path: azureml://registries/azureml-meta/models/Llama-3.2-3B/versions/3
+    # path: azureml://registries/azureml-meta/models/Meta-Llama-3-70B/versions/7  
     # path: azureml://registries/azureml/models/mistralai-Mixtral-8x7B-v01/versions/15
 outputs:  
   trained_model:  
@@ -120,7 +120,9 @@ jobs:
       deepspeed_config: ${{parent.inputs.deepspeed_config}}  
       target_modules: ${{parent.inputs.target_modules}}  
       enable_quantization: ${{parent.inputs.enable_quantization}}  
-    environment: azureml:CliV2AnonymousEnvironment:5a39874ee6cb1920e072feb73a455c89  
+    environment: 
+      conda_file: ./conda.yml  
+      image: mcr.microsoft.com/azureml/curated/acpt-pytorch-2.2-cuda12.1 
     outputs:  
       output_dir: ${{parent.outputs.trained_model}}  
       ckp_dir: ${{parent.outputs.ckp_dir}}  
@@ -129,7 +131,7 @@ jobs:
       type: pytorch  
       process_count_per_instance: 1 
     resources:  
-      instance_count: 2    
+      instance_count: 1    
   evaluate:  
     type: command  
     code: ./  
