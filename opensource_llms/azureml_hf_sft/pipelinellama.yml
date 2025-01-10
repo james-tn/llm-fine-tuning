@@ -33,6 +33,7 @@ inputs:
   learning_rate: 2e-4  
   weight_decay: 0.001  
   epochs: 3  
+  verbosity: INFO  # Added verbosity parameter  
   train_dataset:  
     mode: ro_mount  
     path: azureml:hscode_train_short_ds:4  
@@ -54,21 +55,20 @@ outputs:
   trained_model:  
   ckp_dir:  
   evaluated_model:  
-  
 jobs:  
   train:  
     type: command  
     code: ./  
-    command: >-  
+    command: >  
       python fine_tune.py  
       --model_dir ${{inputs.model_dir}}  
       --ckp_dir ${{outputs.ckp_dir}}  
       --epochs ${{inputs.epochs}}  
       --max_steps ${{inputs.max_steps}}  
       --trained_model ${{outputs.output_dir}}  
-      --chat_model ${{inputs.chat_model}} 
       --use_flash_attn ${{inputs.use_flash_attn}}   
-      --deepspeed ${{inputs.deepspeed}}  
+      --chat_model ${{inputs.chat_model}}  
+      --enable_deepspeed ${{inputs.enable_deepspeed}}  
       --enable_quantization ${{inputs.enable_quantization}}  
       --bnb_4bit_quant_storage_dtype ${{inputs.bnb_4bit_quant_storage_dtype}}  
       --use_4bit_quantization ${{inputs.use_4bit_quantization}}
@@ -94,13 +94,14 @@ jobs:
       --weight_decay ${{inputs.weight_decay}}  
       --deepspeed_config ${{inputs.deepspeed_config}}  
       --target_modules ${{inputs.target_modules}}  
+      --verbosity ${{inputs.verbosity}}  # Pass verbosity to the script  
     inputs:  
       epochs: ${{parent.inputs.epochs}}  
       max_steps: ${{parent.inputs.max_steps}}  
       model_dir: ${{parent.inputs.model_dir}}  
       chat_model: ${{parent.inputs.chat_model}}  
       use_flash_attn: ${{parent.inputs.use_flash_attn}}  
-      deepspeed: ${{parent.inputs.deepspeed}}  
+      enable_deepspeed: ${{parent.inputs.enable_deepspeed}}  
       train_dataset: ${{parent.inputs.train_dataset}}  
       val_dataset: ${{parent.inputs.val_dataset}}  
       train_batch_size: ${{parent.inputs.train_batch_size}}  
@@ -126,6 +127,7 @@ jobs:
       deepspeed_config: ${{parent.inputs.deepspeed_config}}  
       target_modules: ${{parent.inputs.target_modules}}  
       enable_quantization: ${{parent.inputs.enable_quantization}}  
+      verbosity: ${{parent.inputs.verbosity}}  
     environment:  
       conda_file: ./conda.yml  
       image: mcr.microsoft.com/azureml/curated/acpt-pytorch-2.2-cuda12.1  
@@ -142,7 +144,7 @@ jobs:
   evaluate:  
     type: command  
     code: ./  
-    command: >-  
+    command: >  
       python evaluate.py  
       --trained_model ${{inputs.trained_model}}  
       --model_name ${{inputs.model_name}}  
@@ -150,16 +152,16 @@ jobs:
       --test_dataset ${{inputs.test_dataset}}  
       --model_dir ${{inputs.model_dir}}  
       --evaluated_model ${{outputs.evaluated_model}}  
-      --use_lora ${{inputs.use_lora}}  # Pass use_lora to the evaluation script if needed  
-      --enable_quantization ${{inputs.enable_quantization}}  
+      --use_lora ${{inputs.use_lora}}  
+      --verbosity ${{inputs.verbosity}}  # Pass verbosity to the evaluation script  
     inputs:  
       trained_model: ${{parent.jobs.train.outputs.output_dir}}  
       model_name: ${{parent.inputs.model_name}}  
       test_dataset: ${{parent.inputs.test_dataset}}  
       chat_model: ${{parent.inputs.chat_model}}  
       model_dir: ${{parent.inputs.model_dir}}  
-      use_lora: ${{parent.inputs.use_lora}}  # Ensure use_lora is included  
-      enable_quantization: ${{parent.inputs.enable_quantization}}  
+      use_lora: ${{parent.inputs.use_lora}}  
+      verbosity: ${{parent.inputs.verbosity}}  
     outputs:  
       evaluated_model: ${{parent.outputs.evaluated_model}}  
     environment:  
