@@ -200,6 +200,7 @@ def main(args):
     torch_dtype = (
     quant_storage_dtype if quant_storage_dtype and quant_storage_dtype.is_floating_point else torch.float32
 )
+    print("torch_dtype ", torch_dtype)
 
     # Load the model  
 
@@ -210,7 +211,6 @@ def main(args):
             attn_implementation="flash_attention_2" if args.use_flash_attn else "eager",
             torch_dtype=torch_dtype,
     )  
-  
     # Apply LoRA if specified
     peft_config = None  
     if args.use_lora:  
@@ -239,7 +239,9 @@ def main(args):
     tokenizer.padding_side = "right"  
     
     # Define training arguments  
-    training_arguments = TrainingArguments(  
+    load_best_model_at_the_end = None if (args.enable_deepspeed and args.use_lora) else True
+    logging.info("load_best_model_at_the_end  %s", load_best_model_at_the_end)
+    training_arguments = SFTConfig(  
         output_dir=output_dir,  
         num_train_epochs=num_train_epochs,  
         per_device_train_batch_size=per_device_train_batch_size,  
@@ -263,19 +265,10 @@ def main(args):
         eval_steps=logging_steps * 20,  
         eval_strategy="epoch" if max_steps == -1 else "steps",  
         max_seq_length=args.max_seq_length,  
-        packing=args.packing,
-        gradient_checkpointing= args.gradient_checkpointing  
+        packing=args.packing  
     )  
-  
-    bnb_config = None  
     if args.enable_quantization and args.use_lora:  
         logging.info("Using quantization for model loading.")  
-        bnb_config = BitsAndBytesConfig(  
-            load_in_4bit=args.use_4bit,  
-            bnb_4bit_quant_type=args.bnb_4bit_quant_type,  
-            bnb_4bit_compute_dtype=torch.float16 if args.use_4bit else None,  
-            bnb_4bit_use_double_quant=args.use_nested_quant,  
-        )  
   
     model = AutoModelForCausalLM.from_pretrained(  
         os.path.join(PATH, "data", "model"),  

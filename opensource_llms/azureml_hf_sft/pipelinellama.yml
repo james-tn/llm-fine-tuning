@@ -129,8 +129,8 @@ jobs:
       enable_quantization: ${{parent.inputs.enable_quantization}}  
       verbosity: ${{parent.inputs.verbosity}}  
     environment:  
-      conda_file: ./conda.yml  
-      image: mcr.microsoft.com/azureml/curated/acpt-pytorch-2.2-cuda12.1  
+      build:
+        path: docker-context
     outputs:  
       output_dir: ${{parent.outputs.trained_model}}  
       ckp_dir: ${{parent.outputs.ckp_dir}}  
@@ -165,6 +165,6 @@ jobs:
     outputs:  
       evaluated_model: ${{parent.outputs.evaluated_model}}  
     environment:  
-      conda_file: ./conda.yml  
-      image: mcr.microsoft.com/azureml/curated/acpt-pytorch-2.2-cuda12.1  
+      build:
+        path: ./docker-context
     compute: azureml:nc80h100  
