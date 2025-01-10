@@ -1,30 +1,32 @@
 $schema: https://azuremlschemas.azureedge.net/latest/pipelineJob.schema.json  
 type: pipeline  
-experiment_name: hscode_llama31-8b_fullweight  
-description: hscode_llama31-8b_fullweight  
+experiment_name: hscode_llama3-70b_LORA  
+description: hscode_llama3-70b_LORA 
 inputs:  
-  model_name: hscode_llama31-8b_fullweight  
+  model_name: hscode_llama3-70b_LORA  
   chat_model: False  
-  deepspeed: False
-  max_steps: 1400
+  deepspeed: True
+  max_steps: 200
   train_batch_size: 5  
   val_batch_size: 5  
   test_batch_size: 5  
   lora_r: 256  
   lora_alpha: 16  
   lora_dropout: 0.05  
-  use_lora: False  # Added use_lora parameter  
+  use_lora: True  # Added use_lora parameter  
   deepspeed_config: deepspeed_configs/ds_config.json
   target_modules: q_proj o_proj k_proj v_proj gate_proj up_proj down_proj
   enable_quantization: True  
-  use_4bit: True  
-  bnb_4bit_compute_dtype: float16  
+  use_4bit_quantization: True  
+  bnb_4bit_quant_storage_dtype: uint8
+  bnb_4bit_compute_dtype: bfloat16  
   bnb_4bit_quant_type: nf4  
   use_nested_quant: False  
   fp16: False  
   bf16: True  
   gradient_accumulation_steps: 4  
   gradient_checkpointing: True  
+  use_flash_attn: True  
   max_seq_length: 1024  
   packing: False  
   max_grad_norm: 0.3  
@@ -44,8 +46,9 @@ inputs:
     path: azureml:hscode_test_short_ds:4  
     type: uri_file  
   model_dir:  
-    path: azureml://registries/azureml-meta/models/Meta-Llama-3.1-8B/versions/4
-    # path: azureml://registries/azureml-meta/models/Meta-Llama-3-70B/versions/7  
+    # path: azureml://registries/azureml-meta/models/Meta-Llama-3.1-8B/versions/4
+    path: azureml://registries/azureml-meta/models/Meta-Llama-3-70B/versions/7  
+    mode: ro_mount
     # path: azureml://registries/azureml/models/mistralai-Mixtral-8x7B-v01/versions/15
 outputs:  
   trained_model:  
@@ -63,9 +66,12 @@ jobs:
       --epochs ${{inputs.epochs}}  
       --max_steps ${{inputs.max_steps}}  
       --trained_model ${{outputs.output_dir}}  
-      --chat_model ${{inputs.chat_model}}  
+      --chat_model ${{inputs.chat_model}} 
+      --use_flash_attn ${{inputs.use_flash_attn}}   
       --deepspeed ${{inputs.deepspeed}}  
       --enable_quantization ${{inputs.enable_quantization}}  
+      --bnb_4bit_quant_storage_dtype ${{inputs.bnb_4bit_quant_storage_dtype}}  
+      --use_4bit_quantization ${{inputs.use_4bit_quantization}}
       --train_dataset ${{inputs.train_dataset}}  
       --val_dataset ${{inputs.val_dataset}}  
       --train_batch_size ${{inputs.train_batch_size}}  
@@ -74,7 +80,6 @@ jobs:
       --lora_alpha ${{inputs.lora_alpha}}  
       --lora_dropout ${{inputs.lora_dropout}}  
       --use_lora ${{inputs.use_lora}}  # Pass use_lora to the script  
-      --use_4bit ${{inputs.use_4bit}}  
       --bnb_4bit_compute_dtype ${{inputs.bnb_4bit_compute_dtype}}  
       --bnb_4bit_quant_type ${{inputs.bnb_4bit_quant_type}}  
       --use_nested_quant ${{inputs.use_nested_quant}}  
@@ -94,6 +99,7 @@ jobs:
       max_steps: ${{parent.inputs.max_steps}}  
       model_dir: ${{parent.inputs.model_dir}}  
       chat_model: ${{parent.inputs.chat_model}}  
+      use_flash_attn: ${{parent.inputs.use_flash_attn}}  
       deepspeed: ${{parent.inputs.deepspeed}}  
       train_dataset: ${{parent.inputs.train_dataset}}  
       val_dataset: ${{parent.inputs.val_dataset}}  
@@ -103,10 +109,11 @@ jobs:
       lora_alpha: ${{parent.inputs.lora_alpha}}  
       lora_dropout: ${{parent.inputs.lora_dropout}}  
       use_lora: ${{parent.inputs.use_lora}}  # Ensure use_lora is included  
-      use_4bit: ${{parent.inputs.use_4bit}}  
+      use_4bit_quantization: ${{parent.inputs.use_4bit_quantization}}  
       bnb_4bit_compute_dtype: ${{parent.inputs.bnb_4bit_compute_dtype}}  
       bnb_4bit_quant_type: ${{parent.inputs.bnb_4bit_quant_type}}  
       use_nested_quant: ${{parent.inputs.use_nested_quant}}  
+      bnb_4bit_quant_storage_dtype: ${{parent.inputs.bnb_4bit_quant_storage_dtype}}
       fp16: ${{parent.inputs.fp16}}  
       bf16: ${{parent.inputs.bf16}}  
       gradient_accumulation_steps: ${{parent.inputs.gradient_accumulation_steps}}  
@@ -125,10 +132,10 @@ jobs:
     outputs:  
       output_dir: ${{parent.outputs.trained_model}}  
       ckp_dir: ${{parent.outputs.ckp_dir}}  
-    compute: azureml:nc40h100  
+    compute: azureml:nc80h100  
     distribution:  
       type: pytorch  
-      process_count_per_instance: 1 
+      process_count_per_instance: 2 
     resources:  
       instance_count: 1  
   

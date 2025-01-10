@@ -104,6 +104,7 @@ def parse_args():
     parser.add_argument("--lora_dropout", type=float, default=0.1)  
     parser.add_argument("--bnb_4bit_compute_dtype", type=str, default="float16")  
     parser.add_argument("--bnb_4bit_quant_type", type=str, default="nf4")  
+    parser.add_argument("--bnb_4bit_quant_storage_dtype", type=str, default="uint8")
     parser.add_argument("--gradient_accumulation_steps", type=int, default=1)  
     parser.add_argument("--max_seq_length", type=int, default=1280)  
     parser.add_argument("--max_grad_norm", type=float, default=0.3)  
@@ -113,12 +114,14 @@ def parse_args():
     parser.add_argument("--early_stopping_threshold", type=float, default=0.0)  
     parser.add_argument("--chat_model", type=str2bool, nargs='?', const=True, default=False)  
     parser.add_argument("--deepspeed", type=str2bool, nargs='?', const=True, default=False)  
-    parser.add_argument("--use_4bit", type=str2bool, nargs='?', const=True, default=True)  
+    parser.add_argument("--use_4bit_quantization", type=str2bool, nargs='?', const=True, default=True) 
+    parser.add_argument("--use_8bit_quantization", type=str2bool, nargs='?', const=True, default=False) 
     parser.add_argument("--use_nested_quant", type=str2bool, nargs='?', const=True, default=False)  
     parser.add_argument("--fp16", type=str2bool, nargs='?', const=True, default=False)  
     parser.add_argument("--bf16", type=str2bool, nargs='?', const=True, default=True)  
     parser.add_argument("--gradient_checkpointing", type=str2bool, nargs='?', const=True, default=True)  
     parser.add_argument("--packing", type=str2bool, nargs='?', const=True, default=False)  
+    parser.add_argument("--use_flash_attn", type=str2bool, nargs='?', const=True, default=True)
     parser.add_argument("--use_lora", type=str2bool, nargs='?', const=True, default=True, help="Use LoRA for parameter-efficient fine-tuning.")  
     parser.add_argument("--deepspeed_config", type=str, default="deepspeed_configs/ds_config.json", help="Path to deepspeed config file.")  
     parser.add_argument("--target_modules", nargs='+', default=["q_proj", "o_proj", "k_proj", "v_proj", "gate_proj", "up_proj", "down_proj"], help="Target modules for LoRA.")  
@@ -144,15 +147,11 @@ def main(args):
     print("rank ", rank)  
   
     new_model = "fine_tuned_model"  
-    lora_r = args.lora_r  
-    lora_alpha = args.lora_alpha  
-    lora_dropout = args.lora_dropout  
     fp16 = args.fp16  
     bf16 = args.bf16  
     per_device_train_batch_size = args.train_batch_size  
     per_device_eval_batch_size = args.val_batch_size  
     gradient_accumulation_steps = args.gradient_accumulation_steps  
-    gradient_checkpointing = args.gradient_checkpointing  
     num_train_epochs = args.epochs  
   
     output_dir = ckp_dir  
@@ -184,23 +183,40 @@ def main(args):
     def formatting_prompts_func(example):  
         return example['record']  
   
-    bnb_config = None  
-    if enable_quantization:  
-        print("Using quantization for model loading.")
-        bnb_config = BitsAndBytesConfig(  
-            load_in_4bit=args.use_4bit,  
-            bnb_4bit_quant_type=args.bnb_4bit_quant_type,  
-            bnb_4bit_compute_dtype=torch.float16 if args.use_4bit else None,  
-            bnb_4bit_use_double_quant=args.use_nested_quant,  
-        )  
-  
+    bnb_config = None
+    quant_storage_dtype = None  
+    if args.use_4bit_quantization:
+        compute_dtype = getattr(torch, args.bnb_4bit_compute_dtype)
+        quant_storage_dtype = getattr(torch, args.bnb_4bit_quant_storage_dtype)
+
+        bnb_config = BitsAndBytesConfig(
+            load_in_4bit=args.use_4bit_quantization,
+            bnb_4bit_quant_type=args.bnb_4bit_quant_type,
+            bnb_4bit_compute_dtype=compute_dtype,
+            bnb_4bit_use_double_quant=args.use_nested_quant,
+            bnb_4bit_quant_storage=quant_storage_dtype,
+        )
+
+        if compute_dtype == torch.float16 and args.use_4bit_quantization:
+            major, _ = torch.cuda.get_device_capability()
+            if major >= 8:
+                print("=" * 80)
+                print("Your GPU supports bfloat16, you can accelerate training with the argument --bf16")
+                print("=" * 80)
+        elif args.use_8bit_quantization:
+            bnb_config = BitsAndBytesConfig(load_in_8bit=args.use_8bit_quantization)
+    torch_dtype = (
+    quant_storage_dtype if quant_storage_dtype and quant_storage_dtype.is_floating_point else torch.float32
+)
+
     # Load the model  
+
     model = AutoModelForCausalLM.from_pretrained(  
         os.path.join(PATH, "data", "model"),  
         quantization_config=bnb_config if enable_quantization and args.use_lora else None,  
         device_map=device_map,
-        torch_dtype=torch.float16,  
-
+            attn_implementation="flash_attention_2" if args.use_flash_attn else "eager",
+            torch_dtype=torch_dtype,
     )  
   
     # Apply LoRA if specified
