@@ -1,19 +1,19 @@
 $schema: https://azuremlschemas.azureedge.net/latest/pipelineJob.schema.json  
 type: pipeline  
-experiment_name: hscode_llama32-3B_FW  
-description: hscode_llama32-3B_FW  
+experiment_name: hscode_llama31-70B_LORAGPU 
+description: hscode_llama32-70B_LORAGPU  
 inputs:  
-  model_name: hscode_llama32-3B_FW  
+  model_name: hscode_llama32-70B_LORAGPU  
   chat_model: False  
   enable_deepspeed: True  
   max_steps: 100  
-  train_batch_size: 5  
-  val_batch_size: 5  
+  train_batch_size: 1  
+  val_batch_size: 1  
   test_batch_size: 5  
   lora_r: 256  
   lora_alpha: 16  
   lora_dropout: 0.05  
-  use_lora: False  # Added use_lora parameter  
+  use_lora: True  # Added use_lora parameter  
   deepspeed_config: deepspeed_configs/ds_config.json  
   target_modules: q_proj o_proj k_proj v_proj gate_proj up_proj down_proj  
   enable_quantization: True  
@@ -25,7 +25,7 @@ inputs:
   bf16: True  
   gradient_accumulation_steps: 4  
   gradient_checkpointing: True  
-  max_seq_length: 1024  
+  max_seq_length: 512  
   packing: False  
   max_grad_norm: 0.3  
   learning_rate: 2e-4  
@@ -45,7 +45,8 @@ inputs:
     path: azureml:hscode_test_short_ds:4  
     type: uri_file  
   model_dir:  
-    path: azureml://registries/azureml-meta/models/Llama-3.2-3B/versions/3  
+    # path: azureml://registries/azureml-meta/models/Llama-3.2-3B/versions/3  
+    path: azureml://registries/azureml-meta/models/Meta-Llama-3.1-70B/versions/4
 outputs:  
   trained_model:  
   ckp_dir:  
@@ -125,12 +126,12 @@ jobs:
     outputs:  
       output_dir: ${{parent.outputs.trained_model}}  
       ckp_dir: ${{parent.outputs.ckp_dir}}  
-    compute: azureml:nc40h100  
+    compute: azureml:StandardND40rsv2  
     distribution:  
       type: pytorch  
-      process_count_per_instance: 1  
+      process_count_per_instance: 8  
     resources:  
-      instance_count: 1  
+      instance_count: 4  
   
   evaluate:  
     type: command  
@@ -158,4 +159,4 @@ jobs:
     environment:  
       conda_file: ./conda.yml  
       image: mcr.microsoft.com/azureml/curated/acpt-pytorch-2.2-cuda12.1  
-    compute: azureml:nc40h100  
+    compute: azureml:nc80h100  

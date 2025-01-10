@@ -143,7 +143,6 @@ def main(args):
     per_device_train_batch_size = args.train_batch_size  
     per_device_eval_batch_size = args.val_batch_size  
     gradient_accumulation_steps = args.gradient_accumulation_steps  
-    gradient_checkpointing = args.gradient_checkpointing  
     num_train_epochs = args.epochs  
   
     output_dir = ckp_dir  
@@ -199,7 +198,8 @@ def main(args):
         eval_steps=logging_steps * 20,  
         eval_strategy="epoch" if max_steps == -1 else "steps",  
         max_seq_length=args.max_seq_length,  
-        packing=args.packing  
+        packing=args.packing,
+        gradient_checkpointing= args.gradient_checkpointing  
     )  
   
     bnb_config = None  
