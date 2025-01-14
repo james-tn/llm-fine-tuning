@@ -1,39 +1,39 @@
 $schema: https://azuremlschemas.azureedge.net/latest/pipelineJob.schema.json  
 type: pipeline  
-experiment_name: hscode_llama3-70b_LORA  
-description: hscode_llama3-70b_LORA 
+experiment_name: hscode_llama3-70b_lora_nd40v2_fsdp  
+description: hscode_llama3-70b_lora_nd40v2_fsdp 
 inputs:  
-  model_name: hscode_llama3-70b_LORA  
+  model_name: hscode_llama3-70b_lora_nd40v2_fsdp  
   chat_model: False  
-  enable_deepspeed: True  
-  max_steps: 100  
+  enable_deepspeed: False  
+  max_steps: 6  
   train_batch_size: 1  
   val_batch_size: 1  
   test_batch_size: 5  
   lora_r: 256  
   lora_alpha: 16  
   lora_dropout: 0.05  
-  use_lora: False  
+  use_lora: True  # Added use_lora parameter  
   deepspeed_config: configs/ds_config.json
   target_modules: q_proj o_proj k_proj v_proj gate_proj up_proj down_proj
   enable_quantization: True  
   use_4bit_quantization: True  
-  bnb_4bit_quant_storage_dtype: bfloat16
+  bnb_4bit_quant_storage_dtype: float16
   bnb_4bit_compute_dtype: float16  
   bnb_4bit_quant_type: nf4  
   use_nested_quant: False  
   fp16: True  
   bf16: False  
-  gradient_accumulation_steps: 4  
+  gradient_accumulation_steps: 64  
   gradient_checkpointing: True  
-  use_flash_attn: True  
+  use_flash_attn: False  
   max_seq_length: 1024  
   packing: False  
   max_grad_norm: 0.3  
   learning_rate: 2e-4  
   weight_decay: 0.001  
   epochs: 3  
-  verbosity: INFO   
+  verbosity: INFO  # Added verbosity parameter  
   train_dataset:  
     mode: ro_mount  
     path: azureml:hscode_train_short_ds:4  
@@ -59,8 +59,15 @@ jobs:
   train:  
     type: command  
     code: ./  
-    command: >  
-      python fine_tune.py  
+    command: >-  
+      accelerate launch 
+      --config_file configs/fsdp_config.yaml  
+      --num_processes 32 
+      --num_machines 4 
+      --machine_rank $NODE_RANK
+      --main_process_ip $MASTER_ADDR
+      --main_process_port $MASTER_PORT
+      fine_tune.py
       --model_dir ${{inputs.model_dir}}  
       --ckp_dir ${{outputs.ckp_dir}}  
       --epochs ${{inputs.epochs}}  
@@ -79,7 +86,7 @@ jobs:
       --lora_r ${{inputs.lora_r}}  
       --lora_alpha ${{inputs.lora_alpha}}  
       --lora_dropout ${{inputs.lora_dropout}}  
-      --use_lora ${{inputs.use_lora}}  # Pass use_lora to the script  
+      --use_lora ${{inputs.use_lora}}    
       --bnb_4bit_compute_dtype ${{inputs.bnb_4bit_compute_dtype}}  
       --bnb_4bit_quant_type ${{inputs.bnb_4bit_quant_type}}  
       --use_nested_quant ${{inputs.use_nested_quant}}  
@@ -109,7 +116,7 @@ jobs:
       lora_r: ${{parent.inputs.lora_r}}  
       lora_alpha: ${{parent.inputs.lora_alpha}}  
       lora_dropout: ${{parent.inputs.lora_dropout}}  
-      use_lora: ${{parent.inputs.use_lora}}   
+      use_lora: ${{parent.inputs.use_lora}}  # Ensure use_lora is included  
       use_4bit_quantization: ${{parent.inputs.use_4bit_quantization}}  
       bnb_4bit_compute_dtype: ${{parent.inputs.bnb_4bit_compute_dtype}}  
       bnb_4bit_quant_type: ${{parent.inputs.bnb_4bit_quant_type}}  
@@ -134,12 +141,12 @@ jobs:
     outputs:  
       output_dir: ${{parent.outputs.trained_model}}  
       ckp_dir: ${{parent.outputs.ckp_dir}}  
-    compute: azureml:nc12s  
+    compute: azureml:StandardND40rsv2   
     distribution:  
       type: pytorch  
-      process_count_per_instance: 2 
+      process_count_per_instance: 1 
     resources:  
-      instance_count: 1  
+      instance_count: 4
   
   evaluate:  
     type: command  

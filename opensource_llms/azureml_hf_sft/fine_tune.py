@@ -6,6 +6,8 @@ import mlflow
 import pandas as pd  
 import glob  
 from datasets import Dataset  
+import transformers
+import packaging.version
 from transformers import (  
     AutoModelForCausalLM,  
     AutoTokenizer,  
@@ -118,7 +120,7 @@ def parse_args():
     parser.add_argument("--packing", type=str2bool, nargs='?', const=True, default=False)  
     parser.add_argument("--use_flash_attn", type=str2bool, nargs='?', const=True, default=True)
     parser.add_argument("--use_lora", type=str2bool, nargs='?', const=True, default=True, help="Use LoRA for parameter-efficient fine-tuning.")  
-    parser.add_argument("--deepspeed_config", type=str, default="deepspeed_configs/ds_config.json", help="Path to deepspeed config file.")  
+    parser.add_argument("--deepspeed_config", type=str, default="configs/ds_config.json", help="Path to deepspeed config file.")  
     parser.add_argument("--target_modules", nargs='+', default=["q_proj", "o_proj", "k_proj", "v_proj", "gate_proj", "up_proj", "down_proj"], help="Target modules for LoRA.")  
     parser.add_argument("--enable_quantization", type=str2bool, nargs='?', const=True, default=False, help="Enable quantization for model loading.")  
     parser.add_argument("--verbosity", type=str, choices=['DEBUG', 'INFO', 'WARNING', 'ERROR', 'CRITICAL'], default='INFO', help="Set the logging verbosity level.")  
@@ -126,6 +128,7 @@ def parse_args():
   
   
 def main(args):  
+    print("args.bf16", args.bf16)
     logging.basicConfig(level=getattr(logging, args.verbosity.upper()))  
   
     PATH = args.model_dir  
@@ -138,11 +141,9 @@ def main(args):
     logging.info("rank: %d", rank)  
   
     new_model = "fine_tuned_model"  
-    fp16 = args.fp16  
-    bf16 = args.bf16  
     per_device_train_batch_size = args.train_batch_size  
     per_device_eval_batch_size = args.val_batch_size  
-    gradient_accumulation_steps = args.gradient_accumulation_steps  
+    gradient_accumulation_steps = 16  
     num_train_epochs = args.epochs  
   
     output_dir = ckp_dir  
@@ -199,15 +200,51 @@ def main(args):
             bnb_config = BitsAndBytesConfig(load_in_8bit=args.use_8bit_quantization)
     torch_dtype = (
     quant_storage_dtype if quant_storage_dtype and quant_storage_dtype.is_floating_point else torch.float32
-)
+)   
+    # Define training arguments  
+    load_best_model_at_the_end = None if (args.enable_deepspeed and args.use_lora) else True
+    logging.info("load_best_model_at_the_end  %s", load_best_model_at_the_end)
+    training_arguments = SFTConfig(  
+        output_dir=output_dir,  
+        num_train_epochs=num_train_epochs,  
+        per_device_train_batch_size=per_device_train_batch_size,  
+        per_device_eval_batch_size=per_device_eval_batch_size,  
+        gradient_accumulation_steps=gradient_accumulation_steps,  
+        optim=optim,  
+        save_steps=save_steps if max_steps != -1 else None,  
+        save_strategy="steps" if max_steps != -1 else "epoch",  
+        logging_steps=logging_steps,  
+        learning_rate=learning_rate,  
+        weight_decay=weight_decay,  
+        fp16=True,
+        bf16=False,  
+        max_grad_norm=max_grad_norm,  
+        max_steps=max_steps if max_steps else None,  
+        warmup_ratio=warmup_ratio,  
+        group_by_length=group_by_length,  
+        lr_scheduler_type=lr_scheduler_type,  
+        deepspeed=args.deepspeed_config if args.enable_deepspeed else None,  
+        load_best_model_at_end=load_best_model_at_the_end,  
+        eval_steps=logging_steps * 20,  
+        eval_strategy="epoch" if max_steps == -1 else "steps",  
+        max_seq_length=args.max_seq_length,  
+        packing=args.packing  
+    )  
+    if args.enable_quantization and args.use_lora:  
+        logging.info("Using quantization for model loading.")  
+  
+  
     print("torch_dtype ", torch_dtype)
+    uses_fsdp = os.environ.get("ACCELERATE_USE_FSDP", "none").lower() == "true"
+    print("is_deepspeed_zero3_enabled(): ", is_deepspeed_zero3_enabled())  
+    print("uses_fsdp  ", uses_fsdp)
 
     # Load the model  
 
     model = AutoModelForCausalLM.from_pretrained(  
         os.path.join(PATH, "data", "model"),  
         quantization_config=bnb_config if args.enable_quantization and args.use_lora else None,  
-        device_map=device_map,
+        device_map=device_map if ((not is_deepspeed_zero3_enabled()) and (not uses_fsdp)) else None,
             attn_implementation="flash_attention_2" if args.use_flash_attn else "eager",
             torch_dtype=torch_dtype,
     )  
@@ -236,77 +273,21 @@ def main(args):
         device_map=device_map  
     )  
     tokenizer.pad_token = tokenizer.eos_token  
-    tokenizer.padding_side = "right"  
-    
-    # Define training arguments  
-    load_best_model_at_the_end = None if (args.enable_deepspeed and args.use_lora) else True
-    logging.info("load_best_model_at_the_end  %s", load_best_model_at_the_end)
-    training_arguments = SFTConfig(  
-        output_dir=output_dir,  
-        num_train_epochs=num_train_epochs,  
-        per_device_train_batch_size=per_device_train_batch_size,  
-        per_device_eval_batch_size=per_device_eval_batch_size,  
-        gradient_accumulation_steps=gradient_accumulation_steps,  
-        optim=optim,  
-        save_steps=save_steps if max_steps != -1 else None,  
-        save_strategy="steps" if max_steps != -1 else "epoch",  
-        logging_steps=logging_steps,  
-        learning_rate=learning_rate,  
-        weight_decay=weight_decay,  
-        fp16=fp16,  
-        bf16=bf16,  
-        max_grad_norm=max_grad_norm,  
-        max_steps=max_steps if max_steps else None,  
-        warmup_ratio=warmup_ratio,  
-        group_by_length=group_by_length,  
-        lr_scheduler_type=lr_scheduler_type,  
-        deepspeed=args.deepspeed_config if args.enable_deepspeed else None,  
-        load_best_model_at_end=load_best_model_at_the_end,  
-        eval_steps=logging_steps * 20,  
-        eval_strategy="epoch" if max_steps == -1 else "steps",  
-        max_seq_length=args.max_seq_length,  
-        packing=args.packing  
-    )  
-    if args.enable_quantization and args.use_lora:  
-        logging.info("Using quantization for model loading.")  
-  
-    model = AutoModelForCausalLM.from_pretrained(  
-        os.path.join(PATH, "data", "model"),  
-        quantization_config=bnb_config if args.enable_quantization and args.use_lora else None,  
-        device_map=device_map if not is_deepspeed_zero3_enabled() else None,  
-        torch_dtype=torch.float16,  
-    )  
-  
-    peft_config = None  
-    if args.use_lora:  
-        logging.info("Using LoRA for parameter-efficient fine-tuning, target modules: %s", args.target_modules)  
-        peft_config = LoraConfig(  
-            lora_alpha=args.lora_alpha,  
-            lora_dropout=args.lora_dropout,  
-            r=args.lora_r,  
-            bias="none",  
-            task_type="CAUSAL_LM",  
-            target_modules=args.target_modules,  
-        )  
-        model = PeftModel(model, peft_config)  
-    else:  
-        logging.info("Training using full model's weight.")  
-    model.config.use_cache = False  
-    model.config.pretraining_tp = 1  
-  
-    tokenizer = AutoTokenizer.from_pretrained(  
-        os.path.join(PATH, "data", "model"),  
-        local_files_only=True,  
-        device_map=device_map if not is_deepspeed_zero3_enabled() else None,  
-    )  
-    tokenizer.pad_token = tokenizer.eos_token  
-    tokenizer.padding_side = "right"  
-  
+    # make embedding resizing configurable?
+    # Transformers 4.46.0+ defaults uses mean_resizing by default, which fails with QLoRA + FSDP because the
+    # embedding could be on meta device, therefore, we set mean_resizing=False in that case (i.e. the status quo
+    # ante). See https://github.com/huggingface/accelerate/issues/1620.
+    uses_transformers_4_46 = packaging.version.parse(transformers.__version__) >= packaging.version.parse("4.46.0")
+
+    if (bnb_config is not None) and uses_fsdp and uses_transformers_4_46:
+        model.resize_token_embeddings(len(tokenizer), pad_to_multiple_of=8, mean_resizing=False)
+    else:
+        model.resize_token_embeddings(len(tokenizer), pad_to_multiple_of=8)
+
     early_stopping_callback = EarlyStoppingCallback(  
         early_stopping_patience=args.early_stopping_patience,  
         early_stopping_threshold=args.early_stopping_threshold  
     )  
-    logging.info("is_deepspeed_zero3_enabled(): %s", is_deepspeed_zero3_enabled())  
   
     trainer = SFTTrainer(  
         model=model,  
@@ -327,6 +308,13 @@ def main(args):
         os.makedirs(dest_path, exist_ok=True)  
   
         if rank == 0:  
+            if trainer.is_fsdp_enabled:
+                trainer.accelerator.state.fsdp_plugin.set_state_dict_type("FULL_STATE_DICT")
+                trainer.save_model(dest_path)
+                tokenizer.save_pretrained(dest_path)  
+                return  
+
+
             if not args.enable_deepspeed:  
                 trainer.model.save_pretrained(dest_path)  
                 tokenizer.save_pretrained(dest_path)  
