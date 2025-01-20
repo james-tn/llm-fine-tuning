@@ -1,0 +1,29 @@
+$schema: https://azuremlschemas.azureedge.net/latest/commandComponent.schema.json
+type: command
+name: pretrain
+display_name: pretrain
+inputs:
+  model_name: 
+    type: string
+    default: unsloth_mistral #update this to the name of the fine tuned model
+  learning_rate: 
+    type: number
+    default: 5e-5
+  epochs: 
+    type: number
+    default: 5
+  mounted_data_folder:
+    type: uri_folder
+outputs:
+  trained_model:
+    type: uri_folder
+command: >-
+  python pretrain.py
+  --model_name ${{inputs.model_name}}
+  --learning_rate ${{inputs.learning_rate}}
+  --mounted_data_folder ${{inputs.mounted_data_folder}}
+  --trained_model ${{outputs.trained_model}}
+code: ./pretrain_src
+environment: 
+  conda_file: ./conda.yml
+  image: mcr.microsoft.com/azureml/curated/acpt-pytorch-2.2-cuda12.1

@@ -1,0 +1,38 @@
+$schema: https://azuremlschemas.azureedge.net/latest/pipelineJob.schema.json
+type: pipeline
+
+experiment_name: unsloth pretrain
+description: unsloth pretrain
+inputs:
+  num_examples: 56000 #set max number of examples to use for fine tuning
+  model_name: unsloth_mistral #update this to the name of the fine tuned model
+  epochs: 5
+  mounted_data_folder:
+    mode: ro_mount
+    path: azureml:test_data:1
+    type: uri_folder
+outputs:
+  # map the output of the fine tuning job to the output of pipeline job so that we can easily register the fine tuned model
+  # registering the model is required to deploy the model to an online or batch endpoint
+  trained_model:
+jobs:
+  train:
+    type: command
+    code: ./
+    command: >-
+      python main.py
+      --model_name ${{inputs.model_name}}
+      --learning_rate ${{inputs.learning_rate}}
+      --mounted_data_folder ${{inputs.mounted_data_folder}}
+      --trained_model ${{outputs.output_dir}}
+
+    inputs:
+      learning_rate: 5e-5
+      model_name: unsloth_llama
+      mounted_data_folder: ${{parent.inputs.mounted_data_folder}}
+    environment: 
+      conda_file: ./conda.yml
+      image: mcr.microsoft.com/azureml/curated/acpt-pytorch-2.2-cuda12.1
+    outputs:
+      output_dir: ${{parent.outputs.trained_model}}
+    compute: azureml:NC48adsA100 #update NC48adsA100 to the name of your compute target 

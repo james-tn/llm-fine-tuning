@@ -1,0 +1,41 @@
+$schema: https://azuremlschemas.azureedge.net/latest/pipelineJob.schema.json
+type: pipeline
+experiment_name: Testcomponenent
+description: Testcomponenent_70B
+settings:
+    default_compute: azureml:nc80h100  
+inputs:
+  model_dir:
+    # path: azureml://registries/azureml-meta/models/Meta-Llama-3.1-8B/versions/4
+    # path: azureml://registries/azureml-meta/models/Meta-Llama-3-70B/versions/7  
+    path: azureml://registries/azureml-meta/models/Llama-3.3-70B-Instruct/versions/4
+    # path: azureml://registries/azureml/models/mistralai-Mixtral-8x7B-v01/versions/15
+  use_lora: True
+
+jobs:
+  train:
+    inputs:
+      model_dir: ${{parent.inputs.model_dir}}
+      use_lora: ${{parent.inputs.use_lora}}
+      train_dataset:  
+        mode: ro_mount  
+        path: azureml:hscode_train_short_ds:4  
+        type: uri_file  
+      val_dataset:  
+        mode: ro_mount  
+        path: azureml:hscode_val_short_ds:4  
+        type: uri_file  
+    component: ./train_component.yml
+    type: command
+
+  evaluate:
+    component: ./evaluate_component.yml
+    inputs:
+      trained_model: ${{parent.jobs.train.outputs.trained_model}}
+      model_dir: ${{parent.inputs.model_dir}}
+      use_lora: ${{parent.inputs.use_lora}}
+      model_name: llama70.b_ft
+      test_dataset:  
+        mode: ro_mount  
+        path: azureml:hscode_test_short_ds:4  
+        type: uri_file  

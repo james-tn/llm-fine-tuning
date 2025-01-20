@@ -1,0 +1,28 @@
+$schema: https://azuremlschemas.azureedge.net/latest/commandComponent.schema.json
+name: merge_component
+display_name: merge_component
+version: 1
+type: command
+inputs:
+  trained_model:
+    type: uri_folder
+  model_dir:
+    type: uri_folder
+  use_lora:
+    type: boolean
+    default: true
+    description: Use LoRA for parameter-efficient fine-tuning
+outputs:
+  merged_model_dir:
+    type: uri_folder
+    mode: rw_mount
+command: >
+  python evaluate/merge.py
+  --trained_model ${{inputs.trained_model}}
+  --model_dir ${{inputs.model_dir}}
+  --merged_model_dir ${{outputs.merged_model_dir}}
+  --use_lora ${{inputs.use_lora}}
+code: ./
+environment:
+  build:
+    path: docker-context

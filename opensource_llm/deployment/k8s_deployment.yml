@@ -1,0 +1,29 @@
+$schema: https://azuremlschemas.azureedge.net/latest/kubernetesOnlineDeployment.schema.json
+name: blue
+type: kubernetes
+endpoint_name: llm-k8s-gpu
+model: azureml:llama2_13b_chat_sql_tuned:2 #replace this with your model name and version
+code_configuration:
+  code: ./
+  scoring_script: score_chat.py
+environment: 
+  image: mcr.microsoft.com/azureml/curated/foundation-model-inference:6
+request_settings:
+  request_timeout_ms: 30000
+  max_queue_wait_ms: 30000
+resources:
+    requests:
+        cpu: "10"
+        memory: "200Gi"
+        nvidia.com/gpu: "1"
+    limits:
+        cpu: "12"
+        memory: "210Gi"
+        nvidia.com/gpu: "1"
+
+tags:
+  tag1: deployment-tag1-value
+instance_count: 1
+instance_type: nc24ads
+scale_settings:
+  type: default
