@@ -95,12 +95,15 @@ class DataTrainingArguments:
 
 
 def main(model_args, data_args, training_args):
+    rank = int(os.environ.get('RANK', 0))
+    print(f"Rank: {rank}")
+
     # Set seed for reproducibility
     set_seed(training_args.seed)
 
     # model
     model, peft_config, tokenizer = create_and_prepare_model(model_args, data_args, training_args)
-
+    print("done model preparation")
     # gradient ckpt
     model.config.use_cache = not training_args.gradient_checkpointing
     training_args.gradient_checkpointing = training_args.gradient_checkpointing and not model_args.use_unsloth
@@ -119,6 +122,7 @@ def main(model_args, data_args, training_args):
         training_args,
         apply_chat_template=model_args.chat_template_format != "none",
     )
+    print("done creating dataset")
 
     # trainer
     trainer = SFTTrainer(
@@ -129,12 +133,13 @@ def main(model_args, data_args, training_args):
         eval_dataset=eval_dataset,
         peft_config=peft_config,
     )
+    trainer.remove_callback(MLflowCallback)  
+
     trainer.accelerator.print(f"{trainer.model}")
     if hasattr(trainer.model, "print_trainable_parameters"):
         trainer.model.print_trainable_parameters()
     
     print("is_deepspeed_zero3_enabled(): ", is_deepspeed_zero3_enabled())  
-    print("uses_fsdp  ", uses_fsdp)
 
     with mlflow.start_run() as run:  
 
@@ -147,6 +152,7 @@ def main(model_args, data_args, training_args):
         # saving final model
         if trainer.is_fsdp_enabled:
             trainer.accelerator.state.fsdp_plugin.set_state_dict_type("FULL_STATE_DICT")
+        print("done training")
         trainer.save_model()
 
 
@@ -158,9 +164,7 @@ if __name__ == "__main__":
         model_args, data_args, training_args = parser.parse_json_file(json_file=os.path.abspath(sys.argv[1]))
     else:
         model_args, data_args, training_args = parser.parse_args_into_dataclasses()
-    rank = int(os.environ.get('RANK', 0))
-    print(f"Rank: {rank}")
-    print("Model Arguments: ", model_args)
-    print("Data Training Arguments: ", data_args)
-    print("Training Arguments: ", training_args)
+    # print("Model Arguments: ", model_args)
+    # print("Data Training Arguments: ", data_args)
+    # print("Training Arguments: ", training_args)
     main(model_args, data_args, training_args)

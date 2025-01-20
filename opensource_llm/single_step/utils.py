@@ -86,6 +86,8 @@ def create_datasets(tokenizer, data_args, training_args, apply_chat_template=Fal
 def create_and_prepare_model(args, data_args, training_args):
     if args.use_unsloth:
         from unsloth import FastLanguageModel
+    else:
+        args.model_name_or_path = os.path.join(args.model_name_or_path, "data", "model")
     bnb_config = None
     quant_storage_dtype = None
 
@@ -131,12 +133,11 @@ def create_and_prepare_model(args, data_args, training_args):
             quant_storage_dtype if quant_storage_dtype and quant_storage_dtype.is_floating_point else torch.float32
         )
         model = AutoModelForCausalLM.from_pretrained(
-            os.path.join(args.model_name_or_path, "data", "model") ,
+            args.model_name_or_path,
             quantization_config=bnb_config,
             trust_remote_code=True,
             attn_implementation="flash_attention_2" if args.use_flash_attn else "eager",
             torch_dtype=torch_dtype,
-            local_files_only=True,
         )
 
     peft_config = None
@@ -163,25 +164,14 @@ def create_and_prepare_model(args, data_args, training_args):
         chat_template = DEFAULT_ZEPHYR_CHAT_TEMPLATE
 
     if special_tokens is not None:
-        if args.use_unsloth:
-            tokenizer = AutoTokenizer.from_pretrained(
-                args.model_name_or_path,
-                pad_token=special_tokens.pad_token.value,
-                bos_token=special_tokens.bos_token.value,
-                eos_token=special_tokens.eos_token.value,
-                additional_special_tokens=special_tokens.list(),
-                trust_remote_code=True,
-            )
-        else:
-            tokenizer = AutoTokenizer.from_pretrained(
-                os.path.join(args.model_name_or_path, "data", "model"),
-                pad_token=special_tokens.pad_token.value,
-                bos_token=special_tokens.bos_token.value,
-                eos_token=special_tokens.eos_token.value,
-                additional_special_tokens=special_tokens.list(),
-                local_files_only=True,
-            )
-
+        tokenizer = AutoTokenizer.from_pretrained(
+            args.model_name_or_path,
+            pad_token=special_tokens.pad_token.value,
+            bos_token=special_tokens.bos_token.value,
+            eos_token=special_tokens.eos_token.value,
+            additional_special_tokens=special_tokens.list(),
+            trust_remote_code=True,
+        )
         tokenizer.chat_template = chat_template
 
         # make embedding resizing configurable?
@@ -190,6 +180,7 @@ def create_and_prepare_model(args, data_args, training_args):
         # ante). See https://github.com/huggingface/accelerate/issues/1620.
         uses_transformers_4_46 = packaging.version.parse(transformers.__version__) >= packaging.version.parse("4.46.0")
         uses_fsdp = os.environ.get("ACCELERATE_USE_FSDP", "none").lower() == "true"
+        print("uses_fsdp:", uses_fsdp)
         if (bnb_config is not None) and uses_fsdp and uses_transformers_4_46:
             model.resize_token_embeddings(len(tokenizer), pad_to_multiple_of=8, mean_resizing=False)
         else:

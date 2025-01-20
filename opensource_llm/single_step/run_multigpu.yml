@@ -8,7 +8,13 @@ inputs:
   model_dir: 
     path: azureml://registries/azureml/models/mistralai-Mistral-7B-v01/versions/19
 command: >  
-  python train.py  
+  accelerate launch 
+  --num_processes 4 
+  --num_machines 2 
+  --machine_rank $NODE_RANK
+  --main_process_ip $MASTER_ADDR
+  --main_process_port $MASTER_PORT
+  train.py
   --seed 100  
   --model_name_or_path ${{inputs.model_dir}}  
   --dataset_name "smangrul/ultrachat-10k-chatml"  
@@ -24,9 +30,6 @@ command: >
   --logging_strategy "steps"  
   --eval_strategy "epoch"  
   --save_strategy "epoch"  
-  --push_to_hub  
-  --hub_private_repo True  
-  --hub_strategy "every_save"  
   --bf16 True  
   --packing True  
   --learning_rate 1e-4  
@@ -35,8 +38,8 @@ command: >
   --warmup_ratio 0.0  
   --max_grad_norm 1.0  
   --output_dir ${{outputs.output_dir}}
-  --per_device_train_batch_size 8  
-  --per_device_eval_batch_size 8  
+  --per_device_train_batch_size 2  
+  --per_device_eval_batch_size 2  
   --gradient_accumulation_steps 8  
   --gradient_checkpointing True  
   --use_reentrant False  
@@ -49,16 +52,16 @@ command: >
   --use_4bit_quantization True  
   --use_nested_quant True  
   --bnb_4bit_compute_dtype "bfloat16"  
-  --use_flash_attn True  
+  --use_flash_attn False  
 environment:  
   build:
     path: ./docker-context
-compute: azureml:nc80h100  # Replace with your compute cluster name 
+compute: azureml:nc12s  # Replace with your compute cluster name 
 resources:  
-  instance_count: 1 # Number of nodes  
+  instance_count: 2 # Number of nodes  
 distribution:  
   type: pytorch  
-  process_count_per_instance: 2 # Number of processes per node  
+  process_count_per_instance: 1 # Number of processes per node  
 experiment_name: mistral-sft-training  
 outputs:  
   output_dir:  
