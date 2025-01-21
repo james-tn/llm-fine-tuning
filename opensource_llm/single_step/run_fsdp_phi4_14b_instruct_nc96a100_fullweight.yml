@@ -1,0 +1,71 @@
+$schema: https://azuremlschemas.azureedge.net/latest/commandJob.schema.json  
+type: command  
+description: Torchrun job for training a model with AzureML  
+display_name: azureml://registries/azureml/models/Phi-4/versions/2  
+  
+code: ./ # Path to your training script and related files  
+inputs:
+  model_dir: 
+    path: azureml://registries/azureml/models/Phi-4/versions/2
+command: >  
+  accelerate launch 
+  --config_file "configs/fsdp_config.yaml"
+  --num_processes 4 
+  --num_machines 1 
+  --machine_rank $NODE_RANK
+  --main_process_ip $MASTER_ADDR
+  --main_process_port $MASTER_PORT
+  train.py
+  --seed 100  
+  --model_name_or_path ${{inputs.model_dir}}  
+  --dataset_name "smangrul/ultrachat-10k-chatml"  
+  --chat_template_format "chatml"  
+  --add_special_tokens False  
+  --append_concat_token False  
+  --splits "train,test"  
+  --max_seq_len 2048  
+  --num_train_epochs 1 
+  --max_steps 20 
+  --logging_steps 5  
+  --log_level "info"  
+  --logging_strategy "steps"  
+  --eval_strategy "epoch"  
+  --save_strategy "epoch"  
+  --bf16 True  
+  --packing True  
+  --learning_rate 1e-4  
+  --lr_scheduler_type "cosine"  
+  --weight_decay 1e-4  
+  --warmup_ratio 0.0  
+  --max_grad_norm 1.0  
+  --output_dir ${{outputs.output_dir}}
+  --per_device_train_batch_size 1  
+  --per_device_eval_batch_size 1 
+  --gradient_accumulation_steps 8  
+  --gradient_checkpointing True  
+  --use_reentrant False  
+  --dataset_text_field "content"  
+  --use_peft_lora False  
+  --lora_r 8  
+  --lora_alpha 16  
+  --lora_dropout 0.1  
+  --lora_target_modules "all-linear"  
+  --use_4bit_quantization False  
+  --use_nested_quant False  
+  --bnb_4bit_compute_dtype "bfloat16"  
+  --bnb_4bit_quant_storage_dtype "bfloat16"
+  --use_flash_attn True  
+environment:  
+  build:
+    path: ./docker-context
+compute: azureml:NC96adsA100  # Replace with your compute cluster name 
+resources:  
+  instance_count: 1 # Number of nodes  
+distribution:  
+  type: pytorch  
+  process_count_per_instance: 1 # Number of processes per node  
+experiment_name: phi4-sft-training  
+outputs:  
+  output_dir:  
+    type: uri_folder
+    mode: rw_mount  
