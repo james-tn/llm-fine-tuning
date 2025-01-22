@@ -1,0 +1,178 @@
+$schema: https://azuremlschemas.azureedge.net/latest/commandComponent.schema.json
+name: train_component
+display_name: train_component
+version: 1
+type: command
+inputs:
+  model_dir:
+    type: uri_folder
+  train_dataset:
+    type: uri_file
+  val_dataset:
+    type: uri_file    
+  epochs:
+    type: integer
+    default: 1
+  max_steps:
+    type: integer
+    default: 100
+  train_batch_size:
+    type: integer
+    default: 2
+  val_batch_size:
+    type: integer
+    default: 2
+  lora_r:
+    type: integer
+    default: 256
+  lora_alpha:
+    type: integer
+    default: 16
+  lora_dropout:
+    type: number
+    default: 0.1
+  bnb_4bit_compute_dtype:
+    type: string
+    default: bfloat16
+  bnb_4bit_quant_type:
+    type: string
+    default: nf4
+  bnb_4bit_quant_storage_dtype:
+    type: string
+    default: bfloat16
+  gradient_accumulation_steps:
+    type: integer
+    default: 1
+  max_seq_length:
+    type: integer
+    default: 1280
+  max_grad_norm:
+    type: number
+    default: 0.3
+  learning_rate:
+    type: number
+    default: 0.0002
+  weight_decay:
+    type: number
+    default: 0.001
+  early_stopping_patience:
+    type: integer
+    default: 3
+  early_stopping_threshold:
+    type: number
+    default: 0.0
+  chat_model:
+    type: boolean
+    default: false
+  use_4bit_quantization:
+    type: boolean
+    default: true
+  use_8bit_quantization:
+    type: boolean
+    default: false
+  enable_deepspeed:
+    type: boolean
+    default: false
+  use_nested_quant:
+    type: boolean
+    default: true
+  fp16:
+    type: boolean
+    default: false
+  bf16:
+    type: boolean
+    default: true
+  gradient_checkpointing:
+    type: boolean
+    default: true
+  packing:
+    type: boolean
+    default: false
+  use_flash_attn:
+    type: boolean
+    default: true
+  use_lora:
+    type: boolean
+    default: true
+    description: Use LoRA for parameter-efficient fine-tuning
+  enable_quantization:
+    type: boolean
+    default: true
+  deepspeed_config:
+    type: string
+    default: configs/ds_config.json
+  target_modules:
+    type: string
+    default: "q_proj o_proj k_proj v_proj gate_proj up_proj down_proj"
+  verbosity:
+    type: string
+    default: INFO
+    enum:
+      - DEBUG
+      - INFO
+      - WARNING
+      - ERROR
+      - CRITICAL
+outputs:
+  trained_model:
+    type: uri_folder
+    mode: rw_mount
+  ckp_dir:
+    type: uri_folder
+    mode: rw_mount
+
+command: >
+  accelerate launch 
+  --config_file configs/fsdp_config.yaml  
+  --num_processes 2 
+  --num_machines 1 
+  --machine_rank $NODE_RANK
+  --main_process_ip $MASTER_ADDR
+  --main_process_port $MASTER_PORT
+  train/train.py
+  --model_dir ${{inputs.model_dir}}
+  --ckp_dir ${{outputs.ckp_dir}}
+  --epochs ${{inputs.epochs}}
+  --max_steps ${{inputs.max_steps}}
+  --trained_model ${{outputs.trained_model}}
+  --chat_model ${{inputs.chat_model}}
+  --enable_deepspeed ${{inputs.enable_deepspeed}}
+  --enable_quantization ${{inputs.enable_quantization}}
+  --use_4bit_quantization ${{inputs.use_4bit_quantization}}
+  --use_8bit_quantization ${{inputs.use_8bit_quantization}}
+  --bnb_4bit_quant_storage_dtype ${{inputs.bnb_4bit_quant_storage_dtype}}
+  --bnb_4bit_compute_dtype ${{inputs.bnb_4bit_compute_dtype}}
+  --bnb_4bit_quant_type ${{inputs.bnb_4bit_quant_type}}
+  --use_nested_quant ${{inputs.use_nested_quant}}
+  --fp16 ${{inputs.fp16}}
+  --bf16 ${{inputs.bf16}}
+  --gradient_accumulation_steps ${{inputs.gradient_accumulation_steps}}
+  --gradient_checkpointing ${{inputs.gradient_checkpointing}}
+  --max_seq_length ${{inputs.max_seq_length}}
+  --packing ${{inputs.packing}}
+  --max_grad_norm ${{inputs.max_grad_norm}}
+  --learning_rate ${{inputs.learning_rate}}
+  --weight_decay ${{inputs.weight_decay}}
+  --early_stopping_patience ${{inputs.early_stopping_patience}}
+  --early_stopping_threshold ${{inputs.early_stopping_threshold}}
+  --train_dataset ${{inputs.train_dataset}}
+  --val_dataset ${{inputs.val_dataset}}
+  --train_batch_size ${{inputs.train_batch_size}}
+  --val_batch_size ${{inputs.val_batch_size}}
+  --lora_r ${{inputs.lora_r}}
+  --lora_alpha ${{inputs.lora_alpha}}
+  --lora_dropout ${{inputs.lora_dropout}}
+  --use_lora ${{inputs.use_lora}}
+  --use_flash_attn ${{inputs.use_flash_attn}}
+  --deepspeed_config ${{inputs.deepspeed_config}}
+  --target_modules ${{inputs.target_modules}}
+  --verbosity ${{inputs.verbosity}}
+code: ./
+environment:
+  build:
+    path: docker-context
+distribution:
+  type: pytorch
+  process_count_per_instance: 1
+resources:
+  instance_count: 1

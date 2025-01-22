@@ -1,0 +1,62 @@
+$schema: https://azuremlschemas.azureedge.net/latest/commandComponent.schema.json
+name: evaluate_component
+display_name: evaluate_component
+version: 1
+type: command
+inputs:
+  test_dataset:
+    type: uri_file
+  trained_model:
+    type: uri_folder
+  model_dir:
+    type: uri_folder
+  model_name:
+    type: string
+  chat_model:
+    type: string
+    default: "False"
+  epochs:
+    type: integer
+    default: 1
+  num_examples:
+    type: integer
+    default: 500
+  use_lora:
+    type: boolean
+    default: true
+    description: Use LoRA for parameter-efficient fine-tuning
+  verbosity:
+    type: string
+    default: INFO
+    enum:
+      - DEBUG
+      - INFO
+      - WARNING
+      - ERROR
+      - CRITICAL
+outputs:
+  evaluated_model:
+    type: uri_folder
+    mode: rw_mount
+  mlflow_artifact_dir:
+    type: uri_folder
+    mode: rw_mount
+
+
+command: >
+  python evaluate/evaluate.py
+  --trained_model ${{inputs.trained_model}}
+  --model_name ${{inputs.model_name}}
+  --chat_model ${{inputs.chat_model}}
+  --epochs ${{inputs.epochs}}
+  --num_examples ${{inputs.num_examples}}
+  --model_dir ${{inputs.model_dir}}
+  --evaluated_model ${{outputs.evaluated_model}}
+  --mlflow_artifact_dir ${{outputs.mlflow_artifact_dir}}
+  --test_dataset ${{inputs.test_dataset}}
+  --use_lora ${{inputs.use_lora}}
+  --verbosity ${{inputs.verbosity}}
+code: ./
+environment:
+  build:
+    path: docker-context

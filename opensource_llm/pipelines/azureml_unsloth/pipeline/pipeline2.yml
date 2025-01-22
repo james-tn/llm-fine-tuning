@@ -1,0 +1,30 @@
+$schema: https://azuremlschemas.azureedge.net/latest/pipelineJob.schema.json
+type: pipeline
+display_name: unsloth_pipeline_with_hyperparameter_sweep
+description: Tune hyperparameters for pretrain then continue with fine-tunning
+jobs:
+  pretrain_step:
+    type: command
+    inputs:
+      mounted_data_folder:
+        type: uri_folder
+        mode: ro_mount
+        path: azureml:test_data:1
+    outputs:
+      trained_model:
+        type: uri_folder
+        mode: rw_mount
+    component: ./pretrain.yml
+    compute: azureml:nc80h100 #update NC48adsA100 to the name of your compute target
+
+  fine_tune_step:
+    type: command
+    inputs:
+      trained_model: ${{parent.jobs.pretrain_step.outputs.trained_model}}
+    outputs:
+      fine_tuned_model:
+        type: uri_folder
+        mode: rw_mount
+    component: ./fine_tune.yml
+    compute: azureml:nc80h100 #update NC48adsA100 to the name of your compute target
+    
