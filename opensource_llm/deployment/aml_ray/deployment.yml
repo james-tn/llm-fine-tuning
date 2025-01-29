@@ -1,0 +1,13 @@
+$schema: https://azuremlschemas.azureedge.net/latest/managedOnlineDeployment.schema.json  
+name: ray-deployment  
+endpoint_name: ray-cluster-endpoint2  
+code_configuration:  
+  code: ./  
+  scoring_script: score.py  
+environment:  
+  conda_file: conda.yml  
+  image: mcr.microsoft.com/azureml/curated/minimal-py311-inference:16 
+instance_type: Standard_D16a_v4  
+instance_count: 2  # Number of nodes in the cluster  
+environment_variables:
+  STORAGE_ACCOUNT_NAME: dsshare01

@@ -1,0 +1,2 @@
+az ml online-deployment update --name ray-deployment --endpoint ray-cluster-endpoint2 --file deployment.yml  -w ws01ent -g ml
+az ml online-endpoint invoke --name ray-cluster-endpoint2 --request-file request.json   -w ws01ent -g ml
