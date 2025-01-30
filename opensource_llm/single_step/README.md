@@ -56,18 +56,7 @@ This short guide explains the steps to submit and run Azure ML jobs using the pr
   
 ---  
   
-#### Prerequisites  
-1. **Azure CLI Installed**: Ensure that the Azure CLI is installed and configured on your machine.    
-   [Install Azure CLI](https://learn.microsoft.com/en-us/cli/azure/install-azure-cli)  
-  
-2. **Azure ML CLI Extension Installed**: Install the Azure Machine Learning CLI extension.    
-   ```bash  
-   az extension add -n ml -y  
-3. **Workspace Configuration**: Ensure you are logged into your Azure subscription and have set the active Azure ML workspace.
-   ```bash
-   az account set --subscription <your-subscription-id>  
-   az configure --defaults group=<your-resource-group> workspace=<your-workspace>  
-4. **Submit the Job**
+**Submit the Job**
 Use the Azure ML CLI command to submit the job. Replace <job-yaml-file> with the name of your YAML file.
   ```bash
   az ml job create --file <job-yaml-file>
