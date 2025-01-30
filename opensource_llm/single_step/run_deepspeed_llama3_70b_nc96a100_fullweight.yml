@@ -1,17 +1,17 @@
 $schema: https://azuremlschemas.azureedge.net/latest/commandJob.schema.json  
 type: command  
 description: Torchrun job for training a model with AzureML  
-display_name: run_fsdp_llama3_8b_instruct_nc48a100_fullweight  
+display_name: run_deepspeed_llama3_70b_nc96a100_fullweight  
   
 code: ./ # Path to your training script and related files  
 inputs:
   model_dir: 
-    path: azureml://registries/azureml-meta/models/Meta-Llama-3.1-8B-Instruct/versions/4
+    path: azureml://registries/azureml-meta/models/Llama-3.3-70B-Instruct/versions/4
 command: >  
   accelerate launch 
-  --config_file "configs/fsdp_config.yaml"
-  --num_processes 2 
-  --num_machines 1 
+  --config_file "configs/deepspeed_config_zero3.yaml"
+  --num_processes 8 
+  --num_machines 2 
   --machine_rank $NODE_RANK
   --main_process_ip $MASTER_ADDR
   --main_process_port $MASTER_PORT
@@ -39,8 +39,8 @@ command: >
   --warmup_ratio 0.0  
   --max_grad_norm 1.0  
   --output_dir ${{outputs.output_dir}}
-  --per_device_train_batch_size 2  
-  --per_device_eval_batch_size 2  
+  --per_device_train_batch_size 1  
+  --per_device_eval_batch_size 1  
   --gradient_accumulation_steps 8  
   --gradient_checkpointing True  
   --use_reentrant False  
@@ -58,13 +58,14 @@ command: >
 environment:  
   build:
     path: ./docker-context
-compute: azureml:NC48adsA100  # Replace with your compute cluster name 
+compute: azureml:NC96adsA100
+  # Replace with your compute cluster name 
 resources:  
-  instance_count: 1 # Number of nodes  
+  instance_count: 2 # Number of nodes  
 distribution:  
   type: pytorch  
   process_count_per_instance: 1 # Number of processes per node  
-experiment_name: mistral-sft-training  
+experiment_name: run_deepspeed_llama3_70b_nc96a100_fullweight  
 outputs:  
   output_dir:  
     type: uri_folder
