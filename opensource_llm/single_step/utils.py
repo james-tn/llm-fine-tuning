@@ -132,6 +132,9 @@ def create_and_prepare_model(args, data_args, training_args):
         torch_dtype = (
             quant_storage_dtype if quant_storage_dtype and quant_storage_dtype.is_floating_point else torch.bfloat16
         )
+        print("torch_dtype:", torch_dtype)
+        print("quant_storage_dtype:", quant_storage_dtype)
+        print("quantization_config:", bnb_config)
         model = AutoModelForCausalLM.from_pretrained(
             args.model_name_or_path,
             quantization_config=bnb_config,
