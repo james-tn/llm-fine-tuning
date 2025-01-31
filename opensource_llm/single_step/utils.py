@@ -130,7 +130,7 @@ def create_and_prepare_model(args, data_args, training_args):
         )
     else:
         torch_dtype = (
-            quant_storage_dtype if quant_storage_dtype and quant_storage_dtype.is_floating_point else torch.bfloat16
+            quant_storage_dtype if quant_storage_dtype and quant_storage_dtype.is_floating_point else torch.float16
         )
         print("torch_dtype:", torch_dtype)
         print("quant_storage_dtype:", quant_storage_dtype)
