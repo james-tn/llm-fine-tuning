@@ -1,0 +1,102 @@
+$schema: https://azuremlschemas.azureedge.net/latest/pipelineJob.schema.json
+type: pipeline
+experiment_name: sql_expert_pipeline
+description: SQL Expert fine-tuning and evaluation pipeline
+
+inputs:
+    model_dir:
+        path: azureml://registries/azureml/models/Phi-4/versions/2
+    dataset_name: sql_result_train.jsonl
+    test_dataset: sql_results_test.jsonl
+    db_path: northwind.db
+    use_peft_lora: False
+    max_seq_length: 2048
+    num_train_epochs: 1
+    learning_rate: 1e-4
+
+outputs:
+    trained_model:
+    evaluation_results:
+
+jobs:
+    train:
+        type: command
+        code: ./src
+        command: > 
+            accelerate launch --config_file configs/deepspeed_config_zero3.yaml \
+            --num_processes 2 \
+            --num_machines 1 \
+            --machine_rank $NODE_RANK \
+            --main_process_ip $MASTER_ADDR \
+            --main_process_port $MASTER_PORT \
+            train.py \
+            --model_name_or_path ${{inputs.model_dir}} \
+            --dataset_name ${{inputs.dataset_name}} \
+            --output_dir ${{outputs.trained_model}} \
+            --num_train_epochs ${{inputs.num_train_epochs}} \
+            --max_seq_length ${{inputs.max_seq_length}} \
+            --learning_rate ${{inputs.learning_rate}} \
+            --use_peft_lora ${{inputs.use_peft_lora}}
+            --seed 100  
+            --sql_dataset_path sql_results.jsonl
+            --include_assistant_reasoning True
+            --chat_template_format "chatml"  
+            --add_special_tokens False  
+            --append_concat_token False  
+            --splits "train,test"  
+            --logging_steps 5  
+            --log_level "info"  
+            --logging_strategy "steps"  
+            --eval_strategy "epoch"  
+            --save_strategy "epoch"  
+            --bf16 True  
+            --packing True  
+            --lr_scheduler_type "cosine"  
+            --weight_decay 1e-4  
+            --warmup_ratio 0.0  
+            --max_grad_norm 1.0  
+            --per_device_train_batch_size 1  
+            --per_device_eval_batch_size 1 
+            --gradient_accumulation_steps 8  
+            --gradient_checkpointing True  
+            --use_reentrant False  
+            --dataset_text_field "content"  
+            --lora_r 8  
+            --lora_alpha 16  
+            --lora_dropout 0.1  
+            --lora_target_modules "all-linear"  
+            --use_4bit_quantization True  
+            --use_nested_quant True  
+            --bnb_4bit_compute_dtype "bfloat16"  
+            --bnb_4bit_quant_storage_dtype "bfloat16"
+            --use_flash_attn True  
+
+        inputs:
+            model_dir: ${{parent.inputs.model_dir}}
+            dataset_name: ${{parent.inputs.dataset_name}}
+        outputs:
+            trained_model: ${{parent.outputs.trained_model}}
+        environment: 
+            docker:
+                image: mcr.microsoft.com/azureml/pytorch-2.4-ubuntu20.04-cpu-py39-cuda11.8.0
+        compute: azureml:NC96adsA100
+
+    evaluate:
+        type: command
+        code: ./src
+        command: > 
+            python evaluate.py \
+            --model_dir ${{inputs.trained_model}} \
+            --test_dataset ${{inputs.test_dataset}} \
+            --db_path ${{inputs.db_path}} \
+            --results_path ${{outputs.evaluation_results}}
+        inputs:
+            trained_model: ${{parent.jobs.train.outputs.trained_model}}
+            test_dataset: ${{parent.inputs.test_dataset}}
+            db_path: ${{parent.inputs.db_path}}
+        outputs:
+            evaluation_results: ${{parent.outputs.evaluation_results}}
+        environment:
+            docker:
+                image: mcr.microsoft.com/azureml/pytorch-2.4-ubuntu20.04-cpu-py39-cuda11.8.0
+        compute: azureml:NC96adsA100

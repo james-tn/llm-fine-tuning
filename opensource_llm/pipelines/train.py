@@ -7,6 +7,7 @@ from transformers import HfArgumentParser, set_seed
 from trl import SFTConfig, SFTTrainer
 from utils import create_and_prepare_model, create_datasets
 from transformers.integrations import MLflowCallback, is_deepspeed_zero3_enabled
+import shutil
 
 # Define and parse arguments.
 @dataclass
@@ -161,7 +162,18 @@ def main(model_args, data_args, training_args):
         if trainer.is_fsdp_enabled:
             trainer.accelerator.state.fsdp_plugin.set_state_dict_type("FULL_STATE_DICT")
         print("done training")
-        trainer.save_model()
+        # Merge LoRA weights with base model if using PEFT
+        if model_args.use_peft_lora:
+            print("Merging LoRA weights with base model")
+            model = model.merge_and_unload()
+        
+        # Save final model
+        model.save_pretrained(training_args.output_dir)
+        tokenizer.save_pretrained(training_args.output_dir)
+        
+        # Copy Northwind DB to output dir
+        shutil.copy2('northwind.db', training_args.output_dir)
+        print("Saved final model and database to", training_args.output_dir)
 
 if __name__ == "__main__":
     parser = HfArgumentParser((ModelArguments, DataTrainingArguments, SFTConfig))
