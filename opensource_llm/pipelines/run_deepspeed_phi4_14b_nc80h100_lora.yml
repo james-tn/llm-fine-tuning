@@ -1,7 +1,7 @@
 $schema: https://azuremlschemas.azureedge.net/latest/commandJob.schema.json  
 type: command  
 description: Torchrun job for training a model with AzureML  
-display_name: sql-reasoning-phi4-sft-training  
+display_name: sql-reasoning-phi4-sft-training-deepspeed 
   
 code: ./ # Path to your training script and related files  
 inputs:
@@ -9,7 +9,7 @@ inputs:
     path: azureml://registries/azureml/models/Phi-4/versions/2
 command: >  
   accelerate launch 
-  --config_file "configs/fsdp_config.yaml"
+  --config_file "configs/deepspeed_config_zero3.yaml"
   --num_processes 2 
   --num_machines 1 
   --machine_rank $NODE_RANK
