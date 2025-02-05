@@ -3,25 +3,41 @@ import sqlite3
 from pathlib import Path
 import mlflow
 from vllm import LLM, SamplingParams
+import regex as re
+import torch
 
-def execute_sql(query, db_path):
-    try:
-        with sqlite3.connect(db_path) as conn:
-            cursor = conn.cursor()
-            cursor.execute(query)
-            result = cursor.fetchall()
-            return sorted(map(str, [item for sublist in result for item in sublist]))
-    except Exception as e:
-        print(f"Error executing query: {e}")
-        return None
+def extract_sql_from_response(text):
+    """Extracts SQL query from markdown code blocks"""
+    pattern = r"```sql(.*?)```"
+    matches = re.search(pattern, text, re.DOTALL)
+    return matches.group(1).strip() if matches else text.strip()
 
-def compare_queries(predicted, ground_truth, db_path):
-    pred_result = execute_sql(predicted, db_path)
-    truth_result = execute_sql(ground_truth, db_path)
+def compare_sql_results(predicted_text, ground_truth_query, db_path):
+    # Extract SQL from both predicted and ground truth
+    predicted_sql = extract_sql_from_response(predicted_text)
+    ground_truth_sql = extract_sql_from_response(ground_truth_query)
     
-    if pred_result and truth_result:
-        return pred_result == truth_result
-    return False
+    def execute_query(sql):
+        try:
+            with sqlite3.connect(db_path) as conn:
+                cursor = conn.cursor()
+                cursor.execute(sql)
+                result = cursor.fetchall()
+                return sorted([str(item) for sublist in result for item in sublist])
+        except Exception as e:
+            print(f"Error executing SQL: {e}\nQuery: {sql}")
+            return None
+    
+    pred_result = execute_query(predicted_sql)
+    truth_result = execute_query(ground_truth_sql)
+    
+    return {
+        "predicted_sql": predicted_sql,
+        "ground_truth_sql": ground_truth_sql,
+        "results_match": pred_result == truth_result if pred_result and truth_result else False,
+        "execution_success": bool(pred_result and truth_result)
+    }
+
 
 def main():
     import argparse
@@ -51,43 +67,40 @@ def main():
     )
 
     # Run evaluation
+    # Modified evaluation loop
     results = []
     for item in test_data:
-        prompt = f"<|im_start|>system
-Generate SQL for: {item['user']}<|im_end|>\n<|im_start|>assistant
-"
+        # Generate response
         generated = llm.generate([prompt], sampling_params)[0]
-        predicted_sql = generated.outputs[0].text.split("<|im_end|>")[0].strip()
+        full_response = generated.outputs[0].text
         
-        is_correct = compare_queries(
-            predicted_sql,
+        # Compare results
+        comparison = compare_sql_results(
+            full_response,
             item["sql_result"],
-            Path(args.model_dir)/args.db_path
+            str(Path(args.model_dir)/args.db_path)
         )
         
         results.append({
             "question": item["user"],
-            "predicted": predicted_sql,
-            "ground_truth": item["sql_result"],
-            "correct": is_correct
+            "full_response": full_response,
+            **comparison
         })
-
+    
     # Calculate metrics
-    accuracy = sum(r["correct"] for r in results) / len(results)
-    print(f"Execution Accuracy: {accuracy:.2%}")
-
-    # Log results
-    with open(args.results_path, "w") as f:
-        json.dump({"accuracy": accuracy, "details": results}, f)
-
-    # MLflow logging
+    successful_executions = [r for r in results if r["execution_success"]]
+    accuracy = sum(r["results_match"] for r in successful_executions) / len(successful_executions) if successful_executions else 0
+    
+    print(f"Valid Execution Rate: {len(successful_executions)/len(results):.2%}")
+    print(f"Accuracy (Valid Executions): {accuracy:.2%}")
+    
+    # Log to MLflow
     with mlflow.start_run():
-        mlflow.log_metric("accuracy", accuracy)
-        mlflow.log_artifact(args.results_path)
-        mlflow.log_params({
-            "model": args.model_dir,
-            "test_set_size": len(results)
+        mlflow.log_metrics({
+            "execution_success_rate": len(successful_executions)/len(results),
+            "accuracy": accuracy
         })
+        mlflow.log_artifact(args.results_path)
 
 if __name__ == "__main__":
 
