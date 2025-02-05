@@ -4,7 +4,6 @@ from pathlib import Path
 import mlflow
 from vllm import LLM, SamplingParams
 import regex as re
-import torch
 
 def extract_sql_from_response(text):
     """Extracts SQL query from markdown code blocks"""
@@ -67,8 +66,11 @@ def main():
     )
 
     # Run evaluation
-    # Modified evaluation loop
     results = []
+    for item in test_data:
+        prompt = f"""<|im_start|>system
+Generate SQL for: {item['user']}<|im_end|>\n<|im_start|>assistant
+"""
     for item in test_data:
         # Generate response
         generated = llm.generate([prompt], sampling_params)[0]
