@@ -163,13 +163,15 @@ def main(model_args, data_args, training_args):
             trainer.accelerator.state.fsdp_plugin.set_state_dict_type("FULL_STATE_DICT")
         print("done training")
         # Merge LoRA weights with base model if using PEFT
-        if model_args.use_peft_lora:
-            print("Merging LoRA weights with base model")
-            model = model.merge_and_unload()
+        # if model_args.use_peft_lora:
+        #     print("Merging LoRA weights with base model")
+        #     model = model.merge_and_unload()
         
         # Save final model
-        model.save_pretrained(training_args.output_dir)
-        tokenizer.save_pretrained(training_args.output_dir)
+        trainer.save_model(training_args.output_dir)
+
+        # model.save_pretrained(training_args.output_dir)
+        # tokenizer.save_pretrained(training_args.output_dir)
         
         # Copy Northwind DB to output dir
         shutil.copy2('northwind.db', training_args.output_dir)

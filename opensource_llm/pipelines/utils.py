@@ -61,7 +61,11 @@ def create_sql_dataset(tokenizer, data_args, training_args, apply_chat_template=
     def map_fn(example):
         user_question = example["user"]
         if data_args.include_assistant_reasoning:
-            assistant_answer = example["assistant_reasoning"] + "\n" + example["sql_result"]
+            assistant_answer = example["assistant_reasoning"] 
+            + "\n```sql"
+            + example["sql_result"]
+            + "\n```"
+
         else:
             assistant_answer = example["sql_result"]
 
