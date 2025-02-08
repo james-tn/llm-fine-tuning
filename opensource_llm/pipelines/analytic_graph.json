@@ -1,0 +1,100 @@
+{  
+  "tables": {  
+    "Orders": {  
+      "columns": [  
+        "OrderID INTEGER",  
+        "CustomerID TEXT",  
+        "EmployeeID INTEGER",  
+        "OrderDate DATETIME",  
+        "RequiredDate DATETIME",  
+        "ShippedDate DATETIME" 
+      ],  
+      "description": "Records of all orders placed."  
+    },  
+    "Customers": {  
+      "columns": [  
+        "CustomerID TEXT",  
+        "CompanyName TEXT",  
+        "ContactName TEXT",  
+        "ContactTitle TEXT",  
+        "Address TEXT",  
+        "City TEXT",  
+        "Region TEXT"
+      ],  
+      "description": "Information about customers."  
+    },  
+    "order_details": {  
+      "columns": [  
+        "OrderID INTEGER",  
+        "ProductID INTEGER",  
+        "UnitPrice NUMERIC",  
+        "Quantity INTEGER",  
+        "Discount REAL"  
+      ],  
+      "description": "Details of individual products within an order."  
+    },  
+    "Products": {  
+      "columns": [  
+        "ProductID INTEGER",  
+        "ProductName TEXT",  
+        "SupplierID INTEGER",  
+        "CategoryID INTEGER",  
+        "QuantityPerUnit TEXT",  
+        "UnitPrice NUMERIC",  
+        "UnitsInStock INTEGER",  
+        "UnitsOnOrder INTEGER",  
+        "ReorderLevel INTEGER",  
+        "Discontinued TEXT"  
+      ],  
+      "description": "Information about products."  
+    },  
+    "Employees": {  
+      "columns": [  
+        "EmployeeID INTEGER",  
+        "LastName TEXT",  
+        "FirstName TEXT"       ],  
+      "description": "Information about company employees."  
+    },  
+    "Shippers": {  
+      "columns": [  
+        "ShipperID INTEGER",  
+        "CompanyName TEXT",  
+        "Phone TEXT"  
+      ],  
+      "description": "Information about shipping companies."  
+    },  
+    "Suppliers": {  
+      "columns": [  
+        "SupplierID INTEGER",  
+        "CompanyName TEXT",  
+        "ContactName TEXT",  
+        "ContactTitle TEXT"
+      ],  
+      "description": "Information about product suppliers."  
+    },  
+    "Categories": {  
+      "columns": [  
+        "CategoryID INTEGER",  
+        "CategoryName TEXT",  
+        "Description TEXT",  
+        "Picture BLOB"  
+      ],  
+      "description": "Categories of products."  
+    },  
+    "Territories": {  
+      "columns": [  
+        "TerritoryID TEXT",  
+        "TerritoryDescription TEXT",  
+        "RegionID INTEGER"  
+      ],  
+      "description": "Sales territories."  
+    },  
+    "Regions": {  
+      "columns": [  
+        "RegionID INTEGER",  
+        "RegionDescription TEXT"  
+      ],  
+      "description": "Different regions."  
+    }
+  }  
+}  

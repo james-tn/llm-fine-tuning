@@ -1,6 +1,6 @@
 import os
 from enum import Enum
-
+import json
 import packaging.version
 import torch
 import transformers
@@ -39,6 +39,16 @@ class ChatmlSpecialTokens(str, Enum):
     @classmethod
     def list(cls):
         return [c.value for c in cls]
+def craft_prompt(question, knowledge_graph_context):  
+    return f"""  
+    You are an expert SQL query generator specialized in SQLITE.  
+  
+    {knowledge_graph_context}  
+  
+    Question: {question}  
+  
+    Output the SQL query in a ```sql``` block written in SQLITE syntax. 
+    """  
 
 def create_sql_dataset(tokenizer, data_args, training_args, apply_chat_template=False):
     """
@@ -53,6 +63,11 @@ def create_sql_dataset(tokenizer, data_args, training_args, apply_chat_template=
     Otherwise, final output = sql_result.
     """
     # Load the dataset from the local JSONL file
+    with open("analytic_graph.json", "r") as f:  
+        knowledge_graph = json.load(f)  
+    # Extract knowledge graph context  
+    knowledge_graph_context = json.dumps(knowledge_graph, indent=4)  
+
     dataset = load_dataset("json", data_files=data_args.sql_dataset_path)
     dataset = dataset["train"]  # single split for now
     # Perform a train/test split
@@ -60,15 +75,13 @@ def create_sql_dataset(tokenizer, data_args, training_args, apply_chat_template=
 
     def map_fn(example):
         user_question = example["user"]
+        user_question= craft_prompt(user_question, knowledge_graph_context)
         if data_args.include_assistant_reasoning:
-            assistant_answer = example["assistant_reasoning"] 
-            + "\n```sql"
-            + example["sql_result"]
-            + "\n```"
+            assistant_answer = example["assistant_reasoning"] +"\n```sql"+ example["sql_result"] + "\n```"
 
         else:
-            assistant_answer = example["sql_result"]
-
+            assistant_answer = "\n```sql"+example["sql_result"]+ "\n```"
+        
         return {
             "messages": [
                 {"role": "user", "content": user_question},

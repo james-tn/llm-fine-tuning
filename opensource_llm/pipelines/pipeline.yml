@@ -1,12 +1,12 @@
 $schema: https://azuremlschemas.azureedge.net/latest/pipelineJob.schema.json
 type: pipeline
 experiment_name: sql_expert_pipeline
-description: SQL Expert fine-tuning and evaluation pipeline
+description: SQL Expert fine-tuning and evaluation pipeline-Phi4
 inputs:
     model_dir:
         path: azureml://registries/azureml/models/Phi-4/versions/2
     dataset_name: sql_result_train.jsonl
-    test_dataset: sql_results_test.jsonl
+    test_dataset: sql_result_test.jsonl
     db_path: northwind.db
 outputs:
     trained_model:
@@ -18,8 +18,8 @@ jobs:
         type: command
         code: ./
         command: > 
-            accelerate launch --config_file configs/fsdp_config.yaml 
-            --num_processes 2 
+            accelerate launch  
+            --num_processes 1 
             --num_machines 1 
             --machine_rank $NODE_RANK 
             --main_process_ip $MASTER_ADDR 
@@ -28,13 +28,13 @@ jobs:
             --model_name_or_path ${{inputs.model_dir}} 
             --dataset_name ${{inputs.dataset_name}} 
             --output_dir ${{outputs.trained_model}} 
-            --num_train_epochs 1 
+            --num_train_epochs 3
             --max_seq_length 2048
             --learning_rate 1e-4
             --use_peft_lora True
             --seed 100  
             --sql_dataset_path sql_results.jsonl
-            --include_assistant_reasoning True
+            --include_assistant_reasoning False
             --chat_template_format "chatml"  
             --add_special_tokens False  
             --append_concat_token False  
@@ -50,18 +50,18 @@ jobs:
             --weight_decay 1e-4  
             --warmup_ratio 0.0  
             --max_grad_norm 1.0  
-            --per_device_train_batch_size 1  
-            --per_device_eval_batch_size 1 
+            --per_device_train_batch_size 3  
+            --per_device_eval_batch_size 3 
             --gradient_accumulation_steps 8  
             --gradient_checkpointing True  
             --use_reentrant False  
             --dataset_text_field "content"  
-            --lora_r 8  
+            --lora_r 256  
             --lora_alpha 16  
             --lora_dropout 0.1  
             --lora_target_modules "all-linear"  
-            --use_4bit_quantization True  
-            --use_nested_quant True  
+            --use_4bit_quantization False  
+            --use_nested_quant False  
             --bnb_4bit_compute_dtype "bfloat16"  
             --bnb_4bit_quant_storage_dtype "bfloat16"
             --use_flash_attn True  
@@ -73,7 +73,7 @@ jobs:
         environment: 
             build:
                 path: ./docker-context
-        compute: azureml:nc80h100
+        compute: azureml:nc40h100
         distribution:  
             type: pytorch  
             process_count_per_instance: 1 
@@ -97,4 +97,4 @@ jobs:
         environment: 
             build:
                 path: ./docker-context
-        compute: azureml:nc80h100
+        compute: azureml:nc40h100

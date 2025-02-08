@@ -8,6 +8,15 @@ from trl import SFTConfig, SFTTrainer
 from utils import create_and_prepare_model, create_datasets
 from transformers.integrations import MLflowCallback, is_deepspeed_zero3_enabled
 import shutil
+import torch
+from transformers import (
+    AutoModelForCausalLM,
+    AutoTokenizer,
+    BitsAndBytesConfig,
+)
+from peft import PeftModel  
+
+
 
 # Define and parse arguments.
 @dataclass
@@ -163,15 +172,27 @@ def main(model_args, data_args, training_args):
             trainer.accelerator.state.fsdp_plugin.set_state_dict_type("FULL_STATE_DICT")
         print("done training")
         # Merge LoRA weights with base model if using PEFT
-        # if model_args.use_peft_lora:
-        #     print("Merging LoRA weights with base model")
-        #     model = model.merge_and_unload()
-        
+        if model_args.use_peft_lora:
+            print("Merging LoRA weights with base model")
+            #load the base model
+            # base_model = AutoModelForCausalLM.from_pretrained(
+            #     model_args.model_name_or_path,
+            #     local_files_only=True,
+            #     device_map = {"": 0},
+            # )
+            # base_model.resize_token_embeddings(len(tokenizer), pad_to_multiple_of=8)
+            # #save lora weights
+            # trainer.model.save_pretrained("./lora_weights")
+            # #merge lora weights
+            # model = PeftModel.from_pretrained(base_model, "./lora_weights")
+            model = trainer.model.merge_and_unload()
+            tokenizer.save_pretrained(training_args.output_dir)
+            model.save_pretrained(training_args.output_dir)
+        else:
         # Save final model
-        trainer.save_model(training_args.output_dir)
 
-        # model.save_pretrained(training_args.output_dir)
-        # tokenizer.save_pretrained(training_args.output_dir)
+            trainer.save_model(training_args.output_dir)
+            
         
         # Copy Northwind DB to output dir
         shutil.copy2('northwind.db', training_args.output_dir)

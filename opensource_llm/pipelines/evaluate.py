@@ -4,6 +4,8 @@ from pathlib import Path
 import mlflow
 from vllm import LLM, SamplingParams
 import regex as re
+import torch
+from utils import craft_prompt
 
 def extract_sql_from_response(text):
     """Extracts SQL query from markdown code blocks"""
@@ -13,8 +15,11 @@ def extract_sql_from_response(text):
 
 def compare_sql_results(predicted_text, ground_truth_query, db_path):
     # Extract SQL from both predicted and ground truth
+    print(f"Predicted Text: {predicted_text}")
     predicted_sql = extract_sql_from_response(predicted_text)
+    print(f"Predicted SQL: {predicted_sql}")
     ground_truth_sql = extract_sql_from_response(ground_truth_query)
+    print(f"Ground Truth SQL: {ground_truth_sql}")
     
     def execute_query(sql):
         try:
@@ -57,20 +62,24 @@ def main():
     # Load test data
     with open(args.test_dataset) as f:
         test_data = [json.loads(line) for line in f]
+    with open("analytic_graph.json", "r") as f:  
+        knowledge_graph = json.load(f)  
+    # Extract knowledge graph context  
+    knowledge_graph_context = json.dumps(knowledge_graph, indent=4)  
+
 
     # Evaluation parameters
     sampling_params = SamplingParams(
         temperature=0.1,
-        max_tokens=512,
+        max_tokens=1600,
         stop=["<|im_end|>", "\n"]
     )
 
     # Run evaluation
     results = []
+
     for item in test_data:
-        prompt = f"""<|im_start|>system
-Generate SQL for: {item['user']}<|im_end|>\n<|im_start|>assistant
-"""
+        prompt = f"<|im_start|>user\n{craft_prompt(item['user'], knowledge_graph_context)}<|im_end|>\n<|im_start|>assistant"
     for item in test_data:
         # Generate response
         generated = llm.generate([prompt], sampling_params)[0]
