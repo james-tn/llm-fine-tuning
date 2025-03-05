@@ -1,0 +1,353 @@
+{
+  "date_format": "YYYY-MM-DD",
+  "business_concepts": {
+    "Gross Profit": {
+      "type": "metric",
+      "description": "Total margin realized from orders after deducting freight costs from sales revenue.",
+      "formula": "SUM(order_details.UnitPrice * order_details.Quantity * (1 - order_details.Discount)) - SUM(Orders.Freight)",
+      "tables": ["Orders", "order_details"],
+      "time_dependent": true
+    },
+    "Freight to Sales Ratio": {
+      "type": "metric",
+      "description": "Proportion of freight cost relative to total shipped product sales.",
+      "formula": "SUM(Orders.Freight) / SUM(order_details.UnitPrice * order_details.Quantity * (1 - order_details.Discount))",
+      "tables": ["Orders", "order_details"],
+      "time_dependent": true
+    },
+    "Late Shipment Rate": {
+      "type": "metric",
+      "description": "Percentage of orders shipped past their required date, indicating potential fulfillment delays.",
+      "formula": "(COUNT(CASE WHEN Orders.ShippedDate > Orders.RequiredDate THEN 1 END) * 1.0 / COUNT(Orders.OrderID)) * 100",
+      "tables": ["Orders"],
+      "time_dependent": true
+    },
+    "Regional Freight Distribution": {
+      "type": "metric",
+      "description": "Total freight costs segmented by region to understand geographic shipping expenses.",
+      "formula": "SUM(Orders.Freight) GROUP BY region",
+      "tables": ["Orders", "Shippers", "EmployeeTerritories", "Territories", "Regions", "Employees"],
+      "time_dependent": false
+    },
+    "Multi-Item Order Percentage": {
+      "type": "metric",
+      "description": "Ratio of orders that include more than one distinct product, suggesting bundling or diverse purchasing.",
+      "formula": "COUNT(CASE WHEN (SELECT COUNT(DISTINCT ProductID) FROM order_details WHERE order_details.OrderID = Orders.OrderID) > 1 THEN 1 END)*1.0 / COUNT(Orders.OrderID) * 100",
+      "tables": ["Orders", "order_details"],
+      "time_dependent": false
+    },
+    "Merchandise": {
+      "type": "entity",
+      "description": "Any item sold, referencing product details such as stock levels and category.",
+      "tables": ["Products", "Categories"],
+      "columns": ["ProductID", "ProductName", "UnitPrice", "UnitsInStock", "CategoryID"],
+      "sample_values": [
+        "ProductID: 47",
+        "ProductName: 'Herbal Infusion Tea'",
+        "UnitPrice: 28.00",
+        "UnitsInStock: 110",
+        "CategoryID: 2"
+      ]
+    },
+    "Business Account": {
+      "type": "entity",
+      "description": "Corporate customers or clients with details on company information and location.",
+      "tables": ["Customers"],
+      "columns": ["CustomerID", "CompanyName", "ContactTitle", "City", "Country"],
+      "sample_values": [
+        "CustomerID: 'TRAIH'",
+        "CompanyName: 'Trailhead Sporting Co.'",
+        "ContactTitle: 'Procurement Manager'",
+        "City: 'Denver'",
+        "Country: 'USA'"
+      ]
+    },
+    "Staff Member": {
+      "type": "entity",
+      "description": "Employees within the company, including their job titles and supervisors.",
+      "tables": ["Employees"],
+      "columns": ["EmployeeID", "LastName", "FirstName", "Title", "ReportsTo"],
+      "sample_values": [
+        "EmployeeID: 10",
+        "LastName: 'Henderson'",
+        "FirstName: 'Jamie'",
+        "Title: 'Regional Sales Manager'",
+        "ReportsTo: 5"
+      ]
+    },
+    "Distribution Zone": {
+      "type": "entity",
+      "description": "Distinct geographic areas for sales, grouped under broader regions.",
+      "tables": ["Territories", "Regions"],
+      "columns": ["TerritoryID", "TerritoryDescription", "RegionID", "RegionDescription"],
+      "sample_values": [
+        "TerritoryID: '20201'",
+        "TerritoryDescription: 'Midwest Suburbs'",
+        "RegionID: 2",
+        "RegionDescription: 'Central'"
+      ]
+    },
+    "Fulfillment Partner": {
+      "type": "entity",
+      "description": "External shipping or logistics companies tasked with delivering orders.",
+      "tables": ["Shippers"],
+      "columns": ["ShipperID", "CompanyName", "Phone"],
+      "sample_values": [
+        "ShipperID: 3",
+        "CompanyName: 'Logistics Worldwide'",
+        "Phone: '(212) 555-4990'"
+      ]
+    },
+    "Vendor": {
+      "type": "entity",
+      "description": "Suppliers of goods or materials, including contact and geographic details.",
+      "tables": ["Suppliers"],
+      "columns": ["SupplierID", "CompanyName", "Country", "Phone"],
+      "sample_values": [
+        "SupplierID: 5",
+        "CompanyName: 'North Mountain Farms'",
+        "Country: 'Canada'",
+        "Phone: '(604) 555-1276'"
+      ]
+    },
+    "Item Category": {
+      "type": "entity",
+      "description": "Classification used to group similar merchandise under a shared category.",
+      "tables": ["Categories"],
+      "columns": ["CategoryID", "CategoryName", "Description"],
+      "sample_values": [
+        "CategoryID: 2",
+        "CategoryName: 'Organic Beverages'",
+        "Description: 'Teas, coffees, and juices sourced sustainably'"
+      ]
+    },
+    "Sales Line Item": {
+      "type": "entity",
+      "description": "A single line of products within an order, indicating any quantity and discount details.",
+      "tables": ["order_details"],
+      "columns": ["OrderID", "ProductID", "Quantity", "UnitPrice", "Discount"],
+      "sample_values": [
+        "OrderID: 11010",
+        "ProductID: 47",
+        "Quantity: 20",
+        "UnitPrice: 28.00",
+        "Discount: 0.05"
+      ]
+    },
+    "Reorder Necessity Index": {
+      "type": "metric",
+      "description": "Proportion of products nearing or below their reorder level, indicating replenishment needs.",
+      "formula": "COUNT(CASE WHEN Products.UnitsInStock <= Products.ReorderLevel THEN 1 END)*1.0 / COUNT(DISTINCT Products.ProductID)*100",
+      "tables": ["Products"],
+      "time_dependent": false
+    },
+    "High-Value Account Ratio": {
+      "type": "metric",
+      "description": "Percentage of customers generating total orders above a defined revenue threshold.",
+      "formula": "(COUNT(CASE WHEN (SELECT SUM(order_details.UnitPrice * order_details.Quantity * (1 - order_details.Discount)) FROM Orders JOIN order_details ON Orders.OrderID = order_details.OrderID WHERE Orders.CustomerID = Customers.CustomerID) > 10000 THEN 1 END)*1.0 / COUNT(DISTINCT Customers.CustomerID)) * 100",
+      "tables": ["Customers", "Orders", "order_details"],
+      "time_dependent": false
+    },
+    "Order Processing Speed": {
+      "type": "metric",
+      "description": "Average number of days from when an order is placed to when it is shipped, indicating operational efficiency.",
+      "formula": "AVG(julianday(Orders.ShippedDate) - julianday(Orders.OrderDate))",
+      "tables": ["Orders"],
+      "time_dependent": true
+    },
+    "Year-over-Year Growth": {
+      "type": "metric",
+      "description": "Annual increase or decrease in total sales revenue compared to the same period in the previous year.",
+      "formula": "((SUM(current_year.OrderRevenue) - SUM(previous_year.OrderRevenue)) / SUM(previous_year.OrderRevenue)) * 100",
+      "tables": ["Orders", "order_details"],
+      "time_dependent": true
+    }
+  },
+  "table_relationships": {
+    "orders_order_details": {
+      "join_condition": "Orders.OrderID = order_details.OrderID"
+    },
+    "order_details_products": {
+      "join_condition": "order_details.ProductID = Products.ProductID"
+    },
+    "products_categories": {
+      "join_condition": "Products.CategoryID = Categories.CategoryID"
+    },
+    "orders_customers": {
+      "join_condition": "Orders.CustomerID = Customers.CustomerID"
+    },
+    "orders_employees": {
+      "join_condition": "Orders.EmployeeID = Employees.EmployeeID"
+    },
+    "employees_employeeTerritories": {
+      "join_condition": "Employees.EmployeeID = EmployeeTerritories.EmployeeID"
+    },
+    "employeeTerritories_territories": {
+      "join_condition": "EmployeeTerritories.TerritoryID = Territories.TerritoryID"
+    },
+    "territories_regions": {
+      "join_condition": "Territories.RegionID = Regions.RegionID"
+    },
+    "orders_shippers": {
+      "join_condition": "Orders.ShipVia = Shippers.ShipperID"
+    },
+    "employees_managers": {
+      "join_condition": "Employees.ReportsTo = Employees.EmployeeID"
+    }
+  },
+  "tables": {
+    "Orders": {
+      "columns": [
+        "OrderID INTEGER",
+        "CustomerID TEXT",
+        "EmployeeID INTEGER",
+        "OrderDate DATETIME",
+        "RequiredDate DATETIME",
+        "ShippedDate DATETIME",
+        "ShipVia INTEGER",
+        "Freight NUMERIC",
+        "ShipName TEXT",
+        "ShipAddress TEXT",
+        "ShipCity TEXT",
+        "ShipRegion TEXT",
+        "ShipPostalCode TEXT",
+        "ShipCountry TEXT"
+      ],
+      "description": "Records of all orders placed."
+    },
+    "Customers": {
+      "columns": [
+        "CustomerID TEXT",
+        "CompanyName TEXT",
+        "ContactName TEXT",
+        "ContactTitle TEXT",
+        "Address TEXT",
+        "City TEXT",
+        "Region TEXT",
+        "PostalCode TEXT",
+        "Country TEXT",
+        "Phone TEXT",
+        "Fax TEXT"
+      ],
+      "description": "Information about customers."
+    },
+    "order_details": {
+      "columns": [
+        "OrderID INTEGER",
+        "ProductID INTEGER",
+        "UnitPrice NUMERIC",
+        "Quantity INTEGER",
+        "Discount REAL"
+      ],
+      "description": "Details of individual products within an order."
+    },
+    "Products": {
+      "columns": [
+        "ProductID INTEGER",
+        "ProductName TEXT",
+        "SupplierID INTEGER",
+        "CategoryID INTEGER",
+        "QuantityPerUnit TEXT",
+        "UnitPrice NUMERIC",
+        "UnitsInStock INTEGER",
+        "UnitsOnOrder INTEGER",
+        "ReorderLevel INTEGER",
+        "Discontinued TEXT"
+      ],
+      "description": "Information about products."
+    },
+    "Employees": {
+      "columns": [
+        "EmployeeID INTEGER",
+        "LastName TEXT",
+        "FirstName TEXT",
+        "Title TEXT",
+        "TitleOfCourtesy TEXT",
+        "BirthDate DATE",
+        "HireDate DATE",
+        "Address TEXT",
+        "City TEXT",
+        "Region TEXT",
+        "PostalCode TEXT",
+        "Country TEXT",
+        "HomePhone TEXT",
+        "Extension TEXT",
+        "Photo BLOB",
+        "Notes TEXT",
+        "ReportsTo INTEGER",
+        "PhotoPath TEXT"
+      ],
+      "description": "Information about company employees."
+    },
+    "Shippers": {
+      "columns": [
+        "ShipperID INTEGER",
+        "CompanyName TEXT",
+        "Phone TEXT"
+      ],
+      "description": "Information about shipping companies."
+    },
+    "Suppliers": {
+      "columns": [
+        "SupplierID INTEGER",
+        "CompanyName TEXT",
+        "ContactName TEXT",
+        "ContactTitle TEXT",
+        "Address TEXT",
+        "City TEXT",
+        "Region TEXT",
+        "PostalCode TEXT",
+        "Country TEXT",
+        "Phone TEXT",
+        "Fax TEXT",
+        "HomePage TEXT"
+      ],
+      "description": "Information about product suppliers."
+    },
+    "Categories": {
+      "columns": [
+        "CategoryID INTEGER",
+        "CategoryName TEXT",
+        "Description TEXT",
+        "Picture BLOB"
+      ],
+      "description": "Categories of products."
+    },
+    "Territories": {
+      "columns": [
+        "TerritoryID TEXT",
+        "TerritoryDescription TEXT",
+        "RegionID INTEGER"
+      ],
+      "description": "Sales territories."
+    },
+    "EmployeeTerritories": {
+      "columns": [
+        "EmployeeID INTEGER",
+        "TerritoryID TEXT"
+      ],
+      "description": "Mapping of which employees cover which territories."
+    },
+    "Regions": {
+      "columns": [
+        "RegionID INTEGER",
+        "RegionDescription TEXT"
+      ],
+      "description": "Different regions."
+    },
+    "CustomerDemographics": {
+      "columns": [
+        "CustomerTypeID TEXT",
+        "CustomerDesc TEXT"
+      ],
+      "description": "Types of customer demographics."
+    },
+    "CustomerCustomerDemo": {
+      "columns": [
+        "CustomerID TEXT",
+        "CustomerTypeID TEXT"
+      ],
+      "description": "Linking table for customers and their demographics."
+    }
+  }
+}

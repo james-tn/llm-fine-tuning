@@ -4,17 +4,35 @@ from pathlib import Path
 from dotenv import load_dotenv  
 from tenacity import retry, wait_random_exponential, stop_after_attempt, stop_after_delay  
 from openai import AzureOpenAI  
-from concurrent.futures import ThreadPoolExecutor  
 from difflib import SequenceMatcher  
   
 # Load environment variables  
 load_dotenv()  
-MAX_REC_NUM = 3000  
+MAX_REC_NUM = 300  
 openaikey = os.getenv("AZURE_OPENAI_API_KEY")  
 openaiservice = os.getenv("AZURE_OPENAI_ENDPOINT")  
   
 # Initialize OpenAI client  
-client = AzureOpenAI(api_key=openaikey, api_version=os.getenv("AZURE_OPENAI_API_VERSION"), azure_endpoint=openaiservice)  
+client = AzureOpenAI(  
+    api_key=openaikey,  
+    api_version=os.getenv("AZURE_OPENAI_API_VERSION"),  
+    azure_endpoint=openaiservice  
+)  
+  
+def load_existing_questions(file_path):  
+    """  
+    Load existing questions from a JSONL file to ensure new questions are distinct.  
+    """  
+    existing_questions = []  
+    try:  
+        with open(file_path, "r") as file:  
+            for line in file:  
+                data = json.loads(line.strip())  
+                if "user" in data:  
+                    existing_questions.append(data["user"])  
+    except Exception as e:  
+        print(f"Error loading existing questions: {e}")  
+    return existing_questions  
   
 @retry(wait=wait_random_exponential(multiplier=1, max=60), stop=(stop_after_attempt(20) | stop_after_delay(300)))  
 def generate_questions(ontology):  
@@ -26,7 +44,6 @@ def generate_questions(ontology):
   
     ## Instructions:  
     - Generate a variety of business questions.  
-    - Questions should vary in difficulty levels: easy, medium, and advanced.  
     - Questions can involve aggregates, comparisons, trends, or any kind of analytical insights.  
     - Ensure questions are practical and relevant to real-world business use cases.  
     - Examples of questions:  
@@ -38,8 +55,7 @@ def generate_questions(ontology):
     ## Output Format:  
     Output the questions in the following JSON format:  
     {{  
-        "questions": ["question1", "question2", ...],  
-        "difficulty": ["easy", "medium", "advanced", ...]  
+        "questions": ["question1", "question2", ...]  
     }}  
     """  
     response = client.chat.completions.create(  
@@ -52,7 +68,7 @@ def generate_questions(ontology):
         timeout=90,  
     )  
     response_message = json.loads(response.choices[0].message.content)  
-    assert "questions" in response_message and "difficulty" in response_message  
+    assert "questions" in response_message  
     return response_message  
   
 def is_similar(question1, question2, threshold=0.9):  
@@ -62,55 +78,52 @@ def is_similar(question1, question2, threshold=0.9):
     similarity = SequenceMatcher(None, question1, question2).ratio()  
     return similarity >= threshold  
   
-def deduplicate_questions(questions, difficulties, threshold=0.9):  
+def deduplicate_questions(questions, existing_questions, threshold=0.9):  
     """  
-    Deduplicate questions to ensure no two questions are more than `threshold` similar.  
+    Deduplicate questions to ensure no two questions (including existing ones) are more than `threshold` similar.  
     """  
     unique_questions = []  
-    unique_difficulties = []  
   
-    for i, question in enumerate(questions):  
-        if all(not is_similar(question, existing_question, threshold) for existing_question in unique_questions):  
+    for question in questions:  
+        if all(not is_similar(question, existing_question, threshold) for existing_question in unique_questions) and  all(not is_similar(question, existing_question, threshold) for existing_question in existing_questions):  
             unique_questions.append(question)  
-            unique_difficulties.append(difficulties[i])  
   
-    return unique_questions, unique_difficulties  
+    return unique_questions  
   
-def process_questions(ontology_data):  
+def process_questions(ontology_data, existing_questions):  
     ontology = json.dumps(ontology_data, indent=4)  
     print("Generating questions...")  
-    final_data = {"questions": [], "difficulty": []}  
+    final_questions = []  
   
-    while len(final_data["questions"]) < MAX_REC_NUM:  
+    while len(final_questions) < MAX_REC_NUM:  
         generated_data = generate_questions(ontology)  
-        final_data["questions"].extend(generated_data["questions"])  
-        final_data["difficulty"].extend(generated_data["difficulty"])  
+        final_questions.extend(generated_data["questions"])  
   
         # Deduplication  
-        unique_questions, unique_difficulties = deduplicate_questions(  
-            final_data["questions"], final_data["difficulty"], threshold=0.9  
-        )  
-        final_data = {"questions": unique_questions, "difficulty": unique_difficulties}  
+        final_questions = deduplicate_questions(final_questions, existing_questions, threshold=0.9)  
   
-        if len(final_data["questions"]) > MAX_REC_NUM:  
-            final_data["questions"] = final_data["questions"][:MAX_REC_NUM]  
-            final_data["difficulty"] = final_data["difficulty"][:MAX_REC_NUM]  
+        if len(final_questions) > MAX_REC_NUM:  
+            final_questions = final_questions[:MAX_REC_NUM]  
   
-    return final_data  
+    return {"questions": final_questions}  
   
 if __name__ == "__main__":  
     # Load analytics graph  
     with open("./analytic_graph.json", "r") as file:  
         ontology_data = json.load(file)  
   
+    # Load existing questions from sql_result_v2.jsonl  
+    existing_questions_file = "./sql_result_v2.jsonl"  
+    existing_questions = load_existing_questions(existing_questions_file)  
+  
     # Generate questions  
-    questions_data = process_questions(ontology_data)  
+    questions_data = process_questions(ontology_data, existing_questions)  
   
     # Save results  
-    version_num = 2
+    version_num = 2  
     try:  
-        with open(f"./questions_by_difficulty_v{version_num}.json", "w") as file:  
+        with open(f"./questions_v{version_num}.json", "w") as file:  
             json.dump(questions_data, file, indent=4)  
-        print(f"Questions successfully saved to 'questions_by_difficulty_v{version_num}.json'")  
+        print(f"Questions successfully saved to 'questions_v{version_num}.json'")  
     except Exception as e:  
         print(f"Error saving data: {e}")  

@@ -1,0 +1,290 @@
+[
+    {
+        "scenario": "Supplier Analysis",
+        "input": "How much total revenue was generated last month?",
+        "output": "SELECT SUM([Order Details].UnitPrice * [Order Details].Quantity * (1 - [Order Details].Discount)) AS TotalRevenue FROM orders JOIN [Order Details] ON orders.OrderID = [Order Details].OrderID WHERE YEAR(orders.OrderDate) = YEAR(CURRENT_DATE - INTERVAL 1 MONTH) AND MONTH(orders.OrderDate) = MONTH(CURRENT_DATE - INTERVAL 1 MONTH);",
+        "difficulty": "easy"
+    },
+    {
+        "scenario": "cross_scenario",
+        "input": "Who is the top-performing employee based on total sales within the last quarter?",
+        "output": "SELECT employees.EmployeeID, SUM([Order Details].UnitPrice * [Order Details].Quantity * (1 - [Order Details].Discount)) AS employee_sales FROM [Order Details] JOIN orders ON [Order Details].OrderID = orders.OrderID JOIN employees ON orders.EmployeeID = employees.EmployeeID WHERE orders.OrderDate >= DATE_SUB(CURDATE(), INTERVAL 3 MONTH) GROUP BY employees.EmployeeID ORDER BY employee_sales DESC LIMIT 1",
+        "difficulty": "advanced"
+    },
+    {
+        "scenario": "Order Analysis",
+        "input": "Evaluate the change in total sales between Q1 and Q2 this year.",
+        "output": "SELECT QUARTER(o.OrderDate) AS Quarter, SUM(od.UnitPrice * od.Quantity * (1 - od.Discount)) AS TotalSales FROM orders o JOIN [Order Details] od ON o.OrderID = od.OrderID WHERE YEAR(o.OrderDate) = YEAR(CURDATE()) GROUP BY QUARTER(o.OrderDate) ORDER BY QUARTER(o.OrderDate);",
+        "difficulty": "medium"
+    },
+    {
+        "scenario": "Employee Performance",
+        "input": "What is the average order value for each employee?",
+        "output": "SELECT e.EmployeeID, AVG(od.UnitPrice * od.Quantity * (1 - od.Discount)) AS AverageOrderValue FROM employees e JOIN orders o ON e.EmployeeID = o.EmployeeID JOIN [Order Details] od ON o.OrderID = od.OrderID GROUP BY e.EmployeeID;",
+        "difficulty": "medium"
+    },
+    {
+        "scenario": "Supplier Analysis",
+        "input": "What is the distribution of products per supplier in each city?",
+        "output": "SELECT City, SupplierID, COUNT(ProductID) AS ProductCount FROM suppliers s JOIN products p ON s.SupplierID = p.SupplierID GROUP BY City, SupplierID ORDER BY ProductCount DESC;",
+        "difficulty": "medium"
+    },
+    {
+        "scenario": "Product Analysis",
+        "input": "How many units of each product are on order?",
+        "output": "SELECT ProductName, UnitsOnOrder FROM products;",
+        "difficulty": "easy"
+    },
+    {
+        "scenario": "Shipping Analysis",
+        "input": "Which months see an increase in shipping costs compared to the previous year?",
+        "output": "SELECT EXTRACT(MONTH FROM OrderDate) AS Month, AVG(CASE WHEN DATE_PART('year', OrderDate) = DATE_PART('year', CURRENT_DATE) THEN Freight END) AS CurrentYearAverage, AVG(CASE WHEN DATE_PART('year', OrderDate) = DATE_PART('year', CURRENT_DATE) - 1 THEN Freight END) AS PreviousYearAverage FROM orders WHERE DATE_PART('year', OrderDate) IN (DATE_PART('year', CURRENT_DATE), DATE_PART('year', CURRENT_DATE) - 1) GROUP BY EXTRACT(MONTH FROM OrderDate) HAVING AVG(CASE WHEN DATE_PART('year', OrderDate) = DATE_PART('year', CURRENT_DATE) THEN Freight END) > AVG(CASE WHEN DATE_PART('year', OrderDate) = DATE_PART('year', CURRENT_DATE) - 1 THEN Freight END);",
+        "difficulty": "advanced"
+    },
+    {
+        "scenario": "Product Analysis",
+        "input": "Determine total revenue lost due to discontinued products.",
+        "output": "SELECT SUM([order details].Quantity * [order details].UnitPrice * (1 - [order details].Discount)) AS RevenueLost FROM products INNER JOIN [order details] ON products.ProductID = [order details].ProductID WHERE products.Discontinued = 1;",
+        "difficulty": "advanced"
+    },
+    {
+        "scenario": "Shipping Analysis",
+        "input": "Calculate the median shipping cost per order by shipping method.",
+        "output": "SELECT ShipVia, PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY Freight) AS MedianFreight FROM orders GROUP BY ShipVia",
+        "difficulty": "advanced"
+    },
+    {
+        "scenario": "Shipping Analysis",
+        "input": "Which employee has the best on-time delivery record?",
+        "output": "SELECT EmployeeID, COUNT(OrderID) AS OnTimeOrders FROM orders WHERE ShippedDate <= RequiredDate GROUP BY EmployeeID ORDER BY OnTimeOrders DESC LIMIT 1",
+        "difficulty": "medium"
+    },
+    {
+        "scenario": "Supplier Analysis",
+        "input": "Identify discontinued products with remaining stock.",
+        "output": "SELECT ProductName, UnitsInStock FROM products WHERE Discontinued = 1 AND UnitsInStock > 0;",
+        "difficulty": "easy"
+    },
+    {
+        "scenario": "Supplier Analysis",
+        "input": "Find the top 3 suppliers with the fastest average shipping time.",
+        "output": "SELECT s.SupplierID, AVG(DATEDIFF(o.ShippedDate, o.OrderDate)) AS AvgShippingTime FROM suppliers s JOIN products p ON s.SupplierID = p.SupplierID JOIN [Order Details] od ON p.ProductID = od.ProductID JOIN orders o ON o.OrderID = od.OrderID GROUP BY s.SupplierID ORDER BY AvgShippingTime ASC LIMIT 3;",
+        "difficulty": "advanced"
+    },
+    {
+        "scenario": "Product Analysis",
+        "input": "List the top 5 best-selling products.",
+        "output": "SELECT p.ProductID, p.ProductName, SUM(od.Quantity) AS TotalOrders FROM products p JOIN [Order Details] od ON p.ProductID = od.ProductID GROUP BY p.ProductID, p.ProductName ORDER BY TotalOrders DESC LIMIT 5;",
+        "difficulty": "medium"
+    },
+    {
+        "scenario": "Inventory Management",
+        "input": "Determine the product performance by comparing sales and inventory levels.",
+        "output": "SELECT p.ProductID, SUM(od.Quantity) AS TotalSold FROM products p JOIN [Order Details] od ON p.ProductID = od.ProductID GROUP BY p.ProductID;",
+        "difficulty": "advanced"
+    },
+    {
+        "scenario": "Supplier Analysis",
+        "input": "What is the total sales for each month?",
+        "output": "SELECT DATE_FORMAT(orders.OrderDate, '%Y-%m') AS OrderMonth, SUM([Order Details].UnitPrice * [Order Details].Quantity * (1 - [Order Details].Discount)) AS TotalSales FROM orders JOIN [Order Details] ON orders.OrderID = [Order Details].OrderID GROUP BY OrderMonth;",
+        "difficulty": "medium"
+    },
+    {
+        "scenario": "cross_scenario",
+        "input": "How does the average order value compare between Q1 and Q2 of 2023?",
+        "output": "SELECT 'Q1' AS quarter, SUM([Order Details].UnitPrice * [Order Details].Quantity * (1 - [Order Details].Discount)) / COUNT(DISTINCT orders.OrderID) AS avg_order_value FROM [Order Details] JOIN orders ON [Order Details].OrderID = orders.OrderID WHERE orders.OrderDate BETWEEN '2023-01-01' AND '2023-03-31' UNION ALL SELECT 'Q2', SUM([Order Details].UnitPrice * [Order Details].Quantity * (1 - [Order Details].Discount)) / COUNT(DISTINCT orders.OrderID) AS avg_order_value FROM [Order Details] JOIN orders ON [Order Details].OrderID = orders.OrderID WHERE orders.OrderDate BETWEEN '2023-04-01' AND '2023-06-30'",
+        "difficulty": "medium"
+    },
+    {
+        "scenario": "Order Analysis",
+        "input": "How many orders did each customer place last quarter?",
+        "output": "SELECT CustomerID, COUNT(OrderID) AS OrderCount FROM orders WHERE OrderDate >= DATE_SUB(CURRENT_DATE, INTERVAL 3 MONTH) GROUP BY CustomerID;",
+        "difficulty": "medium"
+    },
+    {
+        "scenario": "cross_scenario",
+        "input": "Which customers have the highest lifetime value?",
+        "output": "SELECT customers.CustomerID, SUM([Order Details].UnitPrice * [Order Details].Quantity * (1 - [Order Details].Discount)) AS lifetime_value FROM [Order Details] JOIN orders ON [Order Details].OrderID = orders.OrderID JOIN customers ON orders.CustomerID = customers.CustomerID GROUP BY customers.CustomerID ORDER BY lifetime_value DESC",
+        "difficulty": "medium"
+    },
+    {
+        "scenario": "Customer Analysis",
+        "input": "Which customers have placed at least three orders?",
+        "output": "SELECT CustomerID FROM orders GROUP BY CustomerID HAVING COUNT(OrderID) >= 3",
+        "difficulty": "medium"
+    },
+    {
+        "scenario": "Employee Performance",
+        "input": "Which employees have processed orders above a total of $10,000?",
+        "output": "SELECT e.EmployeeID FROM employees e JOIN orders o ON e.EmployeeID = o.EmployeeID JOIN [Order Details] od ON o.OrderID = od.OrderID GROUP BY e.EmployeeID HAVING SUM(od.UnitPrice * od.Quantity * (1 - od.Discount)) > 10000;",
+        "difficulty": "advanced"
+    },
+    {
+        "scenario": "Customer Analysis",
+        "input": "Which products have been ordered with the highest quantities?",
+        "output": "SELECT ProductID, SUM(Quantity) AS TotalQuantity FROM [Order Details] GROUP BY ProductID ORDER BY TotalQuantity DESC",
+        "difficulty": "medium"
+    },
+    {
+        "scenario": "Order Analysis",
+        "input": "Which customer received the most orders last year?",
+        "output": "SELECT CustomerID, COUNT(OrderID) AS OrderCount FROM orders WHERE YEAR(OrderDate) = YEAR(CURRENT_DATE) - 1 GROUP BY CustomerID ORDER BY OrderCount DESC LIMIT 1;",
+        "difficulty": "medium"
+    },
+    {
+        "scenario": "Supplier Analysis",
+        "input": "Which suppliers have products with a reorder level greater than 50?",
+        "output": "SELECT suppliers.SupplierID FROM suppliers JOIN products ON suppliers.SupplierID = products.SupplierID WHERE products.ReorderLevel > 50;",
+        "difficulty": "medium"
+    },
+    {
+        "scenario": "cross_scenario",
+        "input": "What is the total sales revenue for the current year?",
+        "output": "SELECT SUM([Order Details].UnitPrice * [Order Details].Quantity * (1 - [Order Details].Discount)) AS total_sales FROM [Order Details] JOIN orders ON [Order Details].OrderID = orders.OrderID WHERE YEAR(orders.OrderDate) = YEAR(CURDATE())",
+        "difficulty": "easy"
+    },
+    {
+        "scenario": "Inventory Management",
+        "input": "What are the top 5 products by revenue over the past 3 months?",
+        "output": "SELECT p.ProductName, SUM(od.Quantity * od.UnitPrice) AS TotalRevenue FROM [Order Details] od JOIN products p ON od.ProductID = p.ProductID WHERE od.OrderDate >= DATEADD(MONTH, -3, CURRENT_DATE) GROUP BY p.ProductName ORDER BY TotalRevenue DESC LIMIT 5;",
+        "difficulty": "advanced"
+    },
+    {
+        "scenario": "Product Analysis",
+        "input": "Which products have never been ordered?",
+        "output": "SELECT ProductName FROM products WHERE ProductID NOT IN (SELECT DISTINCT ProductID FROM [Order Details]);",
+        "difficulty": "advanced"
+    },
+    {
+        "scenario": "Inventory Management",
+        "input": "Assess the correlation between discounts offered and sales quantities.",
+        "output": "SELECT CORR(Discount, Quantity) AS DiscountSalesCorrelation FROM [Order Details];",
+        "difficulty": "advanced"
+    },
+    {
+        "scenario": "Shipping Analysis",
+        "input": "What is the total freight cost for each shipping method?",
+        "output": "SELECT ShipVia, SUM(Freight) AS TotalFreightCost FROM orders GROUP BY ShipVia;",
+        "difficulty": "medium"
+    },
+    {
+        "scenario": "Employee Performance",
+        "input": "List employees and their total sales sorted by the highest sales first.",
+        "output": "SELECT e.EmployeeID, SUM(od.UnitPrice * od.Quantity * (1 - od.Discount)) AS TotalSales FROM employees e JOIN orders o ON e.EmployeeID = o.EmployeeID JOIN [Order Details] od ON o.OrderID = od.OrderID GROUP BY e.EmployeeID ORDER BY TotalSales DESC;",
+        "difficulty": "easy"
+    },
+    {
+        "scenario": "Employee Performance",
+        "input": "Determine the impact of employee title on their sales performance.",
+        "output": "SELECT e.Title, AVG(od.UnitPrice * od.Quantity * (1 - od.Discount)) AS AvgSales FROM employees e JOIN orders o ON e.EmployeeID = o.EmployeeID JOIN [Order Details] od ON o.OrderID = od.OrderID GROUP BY e.Title;",
+        "difficulty": "advanced"
+    },
+    {
+        "scenario": "Customer Analysis",
+        "input": "Find the relationship between order frequency and customer region.",
+        "output": "SELECT c.Region, COUNT(o.OrderID) AS OrderFrequency FROM customers c JOIN orders o ON c.CustomerID = o.CustomerID GROUP BY c.Region ORDER BY OrderFrequency DESC;",
+        "difficulty": "medium"
+    },
+    {
+        "scenario": "cross_scenario",
+        "input": "Calculate the total freight cost by country.",
+        "output": "SELECT orders.ShipCountry, SUM(orders.Freight) AS total_freight_cost FROM orders GROUP BY orders.ShipCountry",
+        "difficulty": "advanced"
+    },
+    {
+        "scenario": "Customer Analysis",
+        "input": "What is the total number of orders placed each year?",
+        "output": "SELECT EXTRACT(YEAR FROM OrderDate) AS Year, COUNT(OrderID) AS TotalOrders FROM orders GROUP BY EXTRACT(YEAR FROM OrderDate);",
+        "difficulty": "medium"
+    },
+    {
+        "scenario": "Inventory Management",
+        "input": "Determine the percentage of discontinued products per category.",
+        "output": "SELECT CategoryID, COUNT(*) * 100.0 / (SELECT COUNT(*) FROM products WHERE CategoryID = p.CategoryID) AS DiscontinuedPercentage FROM products p WHERE p.Discontinued = 1 GROUP BY CategoryID;",
+        "difficulty": "medium"
+    },
+    {
+        "scenario": "Inventory Management",
+        "input": "List the top 5 products with the highest quantity on order.",
+        "output": "SELECT ProductName, UnitsOnOrder FROM products WHERE Discontinued = 0 ORDER BY UnitsOnOrder DESC LIMIT 5;",
+        "difficulty": "easy"
+    },
+    {
+        "scenario": "Inventory Management",
+        "input": "Identify products with a unit price less than the lowest unit price in their category.",
+        "output": "SELECT ProductName FROM products WHERE UnitPrice < (SELECT MIN(UnitPrice) FROM products AS p2 WHERE p2.CategoryID = products.CategoryID);",
+        "difficulty": "medium"
+    },
+    {
+        "scenario": "Product Analysis",
+        "input": "How much revenue has each supplier generated?",
+        "output": "SELECT s.SupplierID, SUM(od.Quantity * (od.UnitPrice - (od.UnitPrice * od.Discount))) AS Revenue FROM products p JOIN [Order Details] od ON p.ProductID = od.ProductID JOIN suppliers s ON p.SupplierID = s.SupplierID GROUP BY s.SupplierID;",
+        "difficulty": "medium"
+    },
+    {
+        "scenario": "Customer Analysis",
+        "input": "What is the most common shipping country?",
+        "output": "SELECT ShipCountry, COUNT(OrderID) AS NumberOfOrders FROM orders GROUP BY ShipCountry ORDER BY NumberOfOrders DESC LIMIT 1;",
+        "difficulty": "easy"
+    },
+    {
+        "scenario": "Product Analysis",
+        "input": "Which supplier provides the most products?",
+        "output": "SELECT SupplierID, COUNT(ProductID) as ProductCount FROM products GROUP BY SupplierID ORDER BY ProductCount DESC LIMIT 1;",
+        "difficulty": "medium"
+    },
+    {
+        "scenario": "Employee Performance",
+        "input": "What is the total freight cost managed by each employee?",
+        "output": "SELECT e.EmployeeID, SUM(o.Freight) AS TotalFreight FROM employees e JOIN orders o ON e.EmployeeID = o.EmployeeID GROUP BY e.EmployeeID;",
+        "difficulty": "medium"
+    },
+    {
+        "scenario": "Order Analysis",
+        "input": "Which shipping method has the highest total freight cost?",
+        "output": "SELECT ShipVia, SUM(Freight) AS TotalFreightCost FROM orders GROUP BY ShipVia ORDER BY TotalFreightCost DESC LIMIT 1;",
+        "difficulty": "medium"
+    },
+    {
+        "scenario": "Shipping Analysis",
+        "input": "Identify the shipping method with the highest average order fulfillment time.",
+        "output": "SELECT ShipVia, AVG(DATEDIFF(ShippedDate, OrderDate)) AS AvgFulfillmentTime FROM orders GROUP BY ShipVia ORDER BY AvgFulfillmentTime DESC LIMIT 1",
+        "difficulty": "advanced"
+    },
+    {
+        "scenario": "cross_scenario",
+        "input": "Which supplier has the shortest average lead time?",
+        "output": "SELECT products.SupplierID, AVG(DATEDIFF(orders.ShippedDate, orders.OrderDate)) AS supplier_lead_time FROM [Order Details] JOIN products ON [Order Details].ProductID = products.ProductID JOIN orders ON [Order Details].OrderID = orders.OrderID GROUP BY products.SupplierID ORDER BY supplier_lead_time ASC LIMIT 1",
+        "difficulty": "advanced"
+    },
+    {
+        "scenario": "Shipping Analysis",
+        "input": "What is the average fulfillment time for orders shipped to each country?",
+        "output": "SELECT ShipCountry, AVG(DATEDIFF(ShippedDate, OrderDate)) AS AvgFulfillmentTime FROM orders GROUP BY ShipCountry",
+        "difficulty": "medium"
+    },
+    {
+        "scenario": "Order Analysis",
+        "input": "How many unique products are ordered by each customer?",
+        "output": "SELECT o.CustomerID, COUNT(DISTINCT od.ProductID) AS UniqueProducts FROM orders o JOIN [Order Details] od ON o.OrderID = od.OrderID GROUP BY o.CustomerID;",
+        "difficulty": "medium"
+    },
+    {
+        "scenario": "Order Analysis",
+        "input": "What is the total sales value for each month in the year 2022?",
+        "output": "SELECT TO_CHAR(OrderDate, 'YYYY-MM') AS Month, SUM(od.UnitPrice * od.Quantity * (1 - od.Discount)) AS TotalSales FROM orders o JOIN \"Order Details\" od ON o.OrderID = od.OrderID WHERE EXTRACT(YEAR FROM OrderDate) = 2022 GROUP BY TO_CHAR(OrderDate, 'YYYY-MM');",
+        "difficulty": "easy"
+    },
+    {
+        "scenario": "Customer Analysis",
+        "input": "Identify orders with a discount greater than 20%.",
+        "output": "SELECT OrderID, Discount FROM [Order Details] WHERE Discount > 0.2;",
+        "difficulty": "medium"
+    },
+    {
+        "scenario": "Employee Performance",
+        "input": "Which employee has handled the most diverse set of products?",
+        "output": "SELECT e.EmployeeID, COUNT(DISTINCT od.ProductID) AS ProductVariety FROM employees e JOIN orders o ON e.EmployeeID = o.EmployeeID JOIN [Order Details] od ON o.OrderID = od.OrderID GROUP BY e.EmployeeID ORDER BY ProductVariety DESC LIMIT 1;",
+        "difficulty": "advanced"
+    }
+]
