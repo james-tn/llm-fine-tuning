@@ -1,0 +1,35 @@
+$schema: https://azuremlschemas.azureedge.net/latest/managedOnlineDeployment.schema.json
+name: vllm-custom
+endpoint_name: vllm-qwen2.5
+environment_variables:
+  MODEL_NAME: Qwen/Qwen2.5-VL-7B-Instruct 
+  VLLM_ARGS: "--max-model-len 5500 --enforce-eager --dtype bfloat16" # optional args for vLLM runtime
+environment:
+  image: cf406cec7620485598800b18191dabd0.azurecr.io/azureml/azureml_96f36f591e5347e2e72d1ddab8ea7dd8
+  inference_config:
+    liveness_route:
+      port: 8000
+      path: /health
+    readiness_route:
+      port: 8000
+      path: /health
+    scoring_route:
+      port: 8000
+      path: /
+instance_type: Standard_NC24ads_A100_v4
+instance_count: 1
+request_settings:
+    max_concurrent_requests_per_instance: 1
+    request_timeout_ms: 10000
+liveness_probe:
+  initial_delay: 10
+  period: 10
+  timeout: 2
+  success_threshold: 1
+  failure_threshold: 30
+readiness_probe:
+  initial_delay: 120
+  period: 10
+  timeout: 2
+  success_threshold: 1
+  failure_threshold: 30

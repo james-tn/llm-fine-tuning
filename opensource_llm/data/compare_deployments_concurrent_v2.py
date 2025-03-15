@@ -18,6 +18,7 @@ DEPLOYMENT2 = os.getenv("DEPLOYMENT2")  # Deployment with reasoning
 DEPLOYMENT3 = os.getenv("DEPLOYMENT3")  # Third deployment  
 DEPLOYMENT4 = os.getenv("DEPLOYMENT4")  # Fourth deployment  
 AZURE_OPENAI_API_VERSION = os.getenv("AZURE_OPENAI_API_VERSION")  
+SQL_JUDGE_DEPLOYMENT = os.getenv("SQL_JUDGE_DEPLOYMENT")  # SQL judge deployment
   
 # Function to execute and compare SQL queries  
 def has_order_by(sql):  
@@ -46,21 +47,22 @@ def compare_sql_results(predicted_sql, ground_truth_sql, db_path='northwind.db')
             with sqlite3.connect(db_path) as conn:  
                 cursor = conn.cursor()  
                 cursor.execute(sql_query)  
-  
-                # Get result structure  
+                  
+                # Get the number of columns and rows  
                 num_columns = len(cursor.description) if cursor.description else 0  
                 rows = cursor.fetchall()  
                 num_rows = len(rows)  
-  
-                # Normalize row values (sorted)  
+                  
+                # Normalize rows for comparison  
                 normalized_rows = []  
                 for row in rows:  
+                    # Convert each item to str (or None) and sort values within the row for non-ordered comparison  
                     sorted_values = sorted(  
                         [str(item) if item is not None else None for item in row],  
                         key=lambda x: (x is None, x)  
                     )  
                     normalized_rows.append(tuple(sorted_values))  
-  
+                  
                 return {  
                     'columns': num_columns,  
                     'rows': num_rows,  
@@ -69,66 +71,108 @@ def compare_sql_results(predicted_sql, ground_truth_sql, db_path='northwind.db')
         except sqlite3.Error:  
             return None  
   
-    # Normalize both queries' results  
+    # Execute both SQL queries  
     pred = _normalize_structure(predicted_sql)  
     truth = _normalize_structure(ground_truth_sql)  
   
-    # Check for execution errors or structure mismatch  
+    # If either query fails, or if the basic structure mismatches, return False immediately  
     if not pred or not truth:  
         return False  
     if pred['columns'] != truth['columns'] or pred['rows'] != truth['rows']:  
         return False  
   
-    # Determine if row order matters  
+    # Determine if ordering matters based on the ground truth query  
     truth_has_order_by = has_order_by(ground_truth_sql)  
-  
-    # Prepare data for comparison  
-    pred_data = pred['data']  
-    truth_data = truth['data']  
-  
-    # Handle row order based on ORDER BY presence  
     if not truth_has_order_by:  
-        pred_data = sorted(pred_data)  
-        truth_data = sorted(truth_data)  
+        pred_data = sorted(pred['data'])  
+        truth_data = sorted(truth['data'])  
+    else:  
+        pred_data = pred['data']  
+        truth_data = truth['data']  
   
-    return pred_data == truth_data  
+    # If the normalized results are exactly equal, we can return True without invoking the LLM  
+    if pred_data == truth_data:  
+        return True  
   
-# Function to query the OpenAI deployments  
-def query_openai_deployment(deployment_name, question, knowledge_graph_context):  
+    # Otherwise, invoke the SQL judge LLM to decide  
+    prompt = f"""  
+        You are a SQL result evaluator tasked with determining whether a predicted SQL query produces an equivalent result set to the ground truth SQL query when executed on the same database.  
+        Below is the provided information:  
+  
+        Ground Truth SQL Query:  
+        {ground_truth_sql}  
+  
+        Ground Truth Result:  
+        Number of Columns: {truth['columns']}  
+        Number of Rows: {truth['rows']}  
+        Data: {truth['data']}  
+  
+        Predicted SQL Query:  
+        {predicted_sql}  
+  
+        Predicted Result:  
+        Number of Columns: {pred['columns']}  
+        Number of Rows: {pred['rows']}  
+        Data: {pred['data']}  
+  
+        Note: If no explicit ORDER BY clause is present, row order may vary, so consider only the content and structure.  
+  
+        Based solely on this information, does the predicted SQL query return the same result as the ground truth query?   
+        Please answer with a single word: True or False.  
+    """.strip()  
+  
+    # Initialize the Azure OpenAI client and use the SQL judge deployment  
     client = AzureOpenAI(  
         azure_endpoint=AZURE_OPENAI_ENDPOINT,  
         api_key=AZURE_OPENAI_API_KEY,  
         api_version=AZURE_OPENAI_API_VERSION  
     )  
+    response = client.chat.completions.create(  
+        model=SQL_JUDGE_DEPLOYMENT,  
+        messages=[  
+            {"role": "system", "content": "You are an expert SQL result judge."},  
+            {"role": "user", "content": prompt}  
+        ]  
+    )  
+    judge_output = response.choices[0].message.content.strip().lower()  
   
-    # Adjust the prompt for DEPLOYMENT3 and DEPLOYMENT4  
-    if deployment_name in [DEPLOYMENT3, DEPLOYMENT4]:  
-        prompt = f"""    
-        Use the following database schema and business context to answer the question below:    
+    # Expect the LLM response to be "true" or "false"  
+    return True if judge_output in ["true"] or "true" in judge_output else False  
   
-        {knowledge_graph_context}  
+# Function to query the OpenAI deployments  
+def query_openai_deployment(deployment_name, question, knowledge_graph_context):  
+    """Uses the given deployment to query the API with the provided question and context. Returns the API’s full response."""  
+    client = AzureOpenAI(  
+        azure_endpoint=AZURE_OPENAI_ENDPOINT,  
+        api_key=AZURE_OPENAI_API_KEY,  
+        api_version=AZURE_OPENAI_API_VERSION  
+    )  
+    prompt= f"""Your task is to use the detailed database schema and business context below to write an accurate and efficient SQL query that answers the user's question.  
+      
+    Before generating the query, follow these steps:  
+    - Thoroughly review the provided schema and business concepts.  
+    - Identify any key business metrics or entities mentioned in the question—such as "Gross Profit", "Late Shipment Rate", "Business Account", etc.—and note their descriptions, formulas, and the associated tables.  
+    - Refer to the table definitions and ensure you use the correct columns and table names.  
+    - If the business concept is time-dependent (as indicated in the schema), include date-based filtering using the date format "{knowledge_graph_context.split('"date_format":')[1].split(',')[0].strip()}" (i.e. YYYY-MM-DD).  
+    - Use the "table_relationships" section to include proper join conditions when your query involves more than one table.  
+    - Consider additional requirements such as aggregation, grouping (e.g., for metrics like "Regional Freight Distribution" which requires GROUP BY region), and any subqueries specified in the business formulas.  
   
-        Question: {question}  
-        Output the SQL query written in SQLITE syntax inside a ```sql``` block with no comments added.  
-        """  
-    else:  
-        prompt = f"""    
-        Use the following database schema and business context to answer the question below:    
+    Finally, construct a SQL query in valid SQLite syntax that fully addresses the question.  
   
-        {knowledge_graph_context}  
+    Database Schema and Business Context:  
+    {knowledge_graph_context}  
   
-        Question: {question}  
-        Output the SQL query written in SQLITE syntax.  
-        """  
+    Question: {question}  
   
+    Output the SQL query in a sql block written in SQLITE syntax."""  
     response = client.chat.completions.create(  
         model=deployment_name,  
         messages=[  
-            {"role": "system", "content": "You are a smart AI assistant with excellent SQL and data analysis skills."},  
+            {"role": "system", "content": "You are an expert SQL query generator specialized in SQLITE."},  
             {"role": "user", "content": prompt.strip()}  
         ]  
     )  
-  
+
     # Extract the SQL query from the response  
     output = response.choices[0].message.content.strip()  
     sql_query = extract_sql_query(output)  
@@ -153,7 +197,7 @@ def compute_accuracy(deployment_name, test_data, knowledge_graph_context, with_r
   
     for record in test_data:  
         question = record["user"]  
-        ground_truth_query = record["assistant_sql"]  
+        ground_truth_query = record["sql_result"]  
   
         # For deployment with reasoning, parse the SQL query after reasoning  
         if with_reasoning:  
@@ -197,7 +241,7 @@ def compute_accuracies_concurrently(test_data, knowledge_graph_context):
 # Main function  
 def main():  
     # Load test data  
-    with open("sql_result__test_v4.jsonl", "r") as f:  
+    with open("sql_result_test_v5.jsonl", "r") as f:  
         test_data = [json.loads(line) for line in f]  
   
     # Load knowledge graph context  
