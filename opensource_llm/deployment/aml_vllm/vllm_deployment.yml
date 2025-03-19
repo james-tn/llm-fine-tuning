@@ -6,7 +6,8 @@ environment_variables:
   VLLM_ATTENTION_BACKEND: FLASH_ATTN
   VLLM_ARGS: "--max-model-len 25500 --dtype bfloat16 --limit-mm-per-prompt image=10" # optional args for vLLM runtime
 environment:
-  image: cf406cec7620485598800b18191dabd0.azurecr.io/azureml/azureml_a21c46b767be1fc60889cd288e9636ea
+  image: 055f730c384f450ebff5b7ddf53fda17.azurecr.io/azureml/azureml_247d4be34d775b06b3540cc024c6194a
+
   inference_config:
     liveness_route:
       port: 8000
