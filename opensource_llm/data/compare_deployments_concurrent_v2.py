@@ -6,6 +6,7 @@ from openai import AzureOpenAI
 from azure.core.credentials import AzureKeyCredential  
 from concurrent.futures import ThreadPoolExecutor, as_completed  
 import re  
+from tenacity import retry, stop_after_attempt, wait_fixed
   
 # Load environment variables from .env file  
 load_dotenv()  
@@ -19,7 +20,10 @@ DEPLOYMENT3 = os.getenv("DEPLOYMENT3")  # Third deployment
 DEPLOYMENT4 = os.getenv("DEPLOYMENT4")  # Fourth deployment  
 AZURE_OPENAI_API_VERSION = os.getenv("AZURE_OPENAI_API_VERSION")  
 SQL_JUDGE_DEPLOYMENT = os.getenv("SQL_JUDGE_DEPLOYMENT")  # SQL judge deployment
-  
+SQL_JUDGE_ENDPOINT = os.getenv("SQL_JUDGE_ENDPOINT")  # SQL judge endpoint
+SQL_JUDGE_API_KEY = os.getenv("SQL_JUDGE_API_KEY")  # SQL judge key
+SQL_JUDGE_API_VERSION = os.getenv("SQL_JUDGE_API_VERSION")  # SQL judge API version
+
 # Function to execute and compare SQL queries  
 def has_order_by(sql):  
     # Remove comments  
@@ -41,7 +45,7 @@ def has_order_by(sql):
   
     return True  
   
-def compare_sql_results(predicted_sql, ground_truth_sql, db_path='northwind.db'):  
+def compare_sql_results(predicted_sql, ground_truth_sql, question, db_path='northwind.db'):
     def _normalize_structure(sql_query):  
         try:  
             with sqlite3.connect(db_path) as conn:  
@@ -58,7 +62,7 @@ def compare_sql_results(predicted_sql, ground_truth_sql, db_path='northwind.db')
                 for row in rows:  
                     # Convert each item to str (or None) and sort values within the row for non-ordered comparison  
                     sorted_values = sorted(  
-                        [str(item) if item is not None else None for item in row],  
+                        [str(item) if item is not None else '' for item in row],  
                         key=lambda x: (x is None, x)  
                     )  
                     normalized_rows.append(tuple(sorted_values))  
@@ -71,76 +75,75 @@ def compare_sql_results(predicted_sql, ground_truth_sql, db_path='northwind.db')
         except sqlite3.Error:  
             return None  
   
-    # Execute both SQL queries  
-    pred = _normalize_structure(predicted_sql)  
-    truth = _normalize_structure(ground_truth_sql)  
-  
-    # If either query fails, or if the basic structure mismatches, return False immediately  
-    if not pred or not truth:  
-        return False  
-    if pred['columns'] != truth['columns'] or pred['rows'] != truth['rows']:  
-        return False  
-  
-    # Determine if ordering matters based on the ground truth query  
-    truth_has_order_by = has_order_by(ground_truth_sql)  
-    if not truth_has_order_by:  
-        pred_data = sorted(pred['data'])  
-        truth_data = sorted(truth['data'])  
-    else:  
-        pred_data = pred['data']  
-        truth_data = truth['data']  
-  
-    # If the normalized results are exactly equal, we can return True without invoking the LLM  
-    if pred_data == truth_data:  
-        return True  
-  
-    # Otherwise, invoke the SQL judge LLM to decide  
-    prompt = f"""  
-        You are a SQL result evaluator tasked with determining whether a predicted SQL query produces an equivalent result set to the ground truth SQL query when executed on the same database.  
-        Below is the provided information:  
-  
-        Ground Truth SQL Query:  
-        {ground_truth_sql}  
-  
-        Ground Truth Result:  
-        Number of Columns: {truth['columns']}  
-        Number of Rows: {truth['rows']}  
-        Data: {truth['data']}  
-  
-        Predicted SQL Query:  
-        {predicted_sql}  
-  
-        Predicted Result:  
-        Number of Columns: {pred['columns']}  
-        Number of Rows: {pred['rows']}  
-        Data: {pred['data']}  
-  
-        Note: If no explicit ORDER BY clause is present, row order may vary, so consider only the content and structure.  
-  
-        Based solely on this information, does the predicted SQL query return the same result as the ground truth query?   
-        Please answer with a single word: True or False.  
-    """.strip()  
-  
-    # Initialize the Azure OpenAI client and use the SQL judge deployment  
-    client = AzureOpenAI(  
-        azure_endpoint=AZURE_OPENAI_ENDPOINT,  
-        api_key=AZURE_OPENAI_API_KEY,  
-        api_version=AZURE_OPENAI_API_VERSION  
-    )  
-    response = client.chat.completions.create(  
-        model=SQL_JUDGE_DEPLOYMENT,  
-        messages=[  
-            {"role": "system", "content": "You are an expert SQL result judge."},  
-            {"role": "user", "content": prompt}  
-        ]  
-    )  
-    judge_output = response.choices[0].message.content.strip().lower()  
-  
-    # Expect the LLM response to be "true" or "false"  
-    return True if judge_output in ["true"] or "true" in judge_output else False  
+    # Execute both SQL queries
+    pred = _normalize_structure(predicted_sql)
+    truth = _normalize_structure(ground_truth_sql)
+
+    # If either query fails, return False immediately
+    if not pred or not truth:
+        return False
+
+    # Determine if ordering matters based on the ground truth query
+    truth_has_order_by = has_order_by(ground_truth_sql)
+    if not truth_has_order_by:
+        pred_data = sorted(pred['data'])
+        truth_data = sorted(truth['data'])
+    else:
+        pred_data = pred['data']
+        truth_data = truth['data']
+
+    # If the normalized results are exactly equal, return True
+    if pred_data == truth_data:
+        return True
+
+    # New prompt with question and relaxed criteria
+    prompt = f"""
+    You are a SQL result evaluator. Determine if the predicted SQL query's result adequately answers the user's question, even if it differs from the ground truth.
+
+    **Considerations**:
+    - Differences in column names, order, or formatting are acceptable if the data answers the question.
+    - Variations in aggregation or grouping are allowed if the result is correct.
+    - Row order only matters if explicitly required by the question.
+
+    **User Question**:
+    {question}
+
+    **Ground Truth SQL**:
+    {ground_truth_sql}
+
+    **Ground Truth Result**:
+    Columns: {truth['columns']}, Rows: {truth['rows']}
+    Data: {truth['data']}
+
+    **Predicted SQL**:
+    {predicted_sql}
+
+    **Predicted Result**:
+    Columns: {pred['columns']}, Rows: {pred['rows']}
+    Data: {pred['data']}
+
+    Does the predicted result answer the question? Respond only with 'True' or 'False'.
+    """.strip()
+
+    # Call Azure OpenAI with updated system message
+    client = AzureOpenAI(
+        azure_endpoint=SQL_JUDGE_ENDPOINT,
+        api_key=SQL_JUDGE_API_KEY,
+        api_version=SQL_JUDGE_API_VERSION
+    )
+    response = client.chat.completions.create(
+        model=SQL_JUDGE_DEPLOYMENT,
+        messages=[
+            {"role": "system", "content": "Evaluate if the SQL result sufficiently answers the user's question. Allow for variations in presentation."},
+            {"role": "user", "content": prompt}
+        ]
+    )
+    judge_output = response.choices[0].message.content.strip().lower()
+    return judge_output == "true"  # Strict check for exact 'true' response
   
 # Function to query the OpenAI deployments  
-def query_openai_deployment(deployment_name, question, knowledge_graph_context):  
+@retry(stop=stop_after_attempt(3), wait=wait_fixed(2))  
+def query_openai_deployment(deployment_name, question, knowledge_graph_context):
     """Uses the given deployment to query the API with the provided question and context. Returns the API’s full response."""  
     client = AzureOpenAI(  
         azure_endpoint=AZURE_OPENAI_ENDPOINT,  
@@ -209,9 +212,9 @@ def compute_accuracy(deployment_name, test_data, knowledge_graph_context, with_r
         else:  
             # For deployment without reasoning, directly parse the response  
             predicted_sql_query = query_openai_deployment(deployment_name, question, knowledge_graph_context).strip()  
-  
+        # print(deployment_name, "Predicted SQL Query:", predicted_sql_query)
         # Compare predicted SQL query with the ground truth  
-        if compare_sql_results(predicted_sql_query, ground_truth_query):  
+        if compare_sql_results(predicted_sql_query, ground_truth_query, question):
             correct_predictions += 1  
   
     accuracy = correct_predictions / total_predictions if total_predictions > 0 else 0  

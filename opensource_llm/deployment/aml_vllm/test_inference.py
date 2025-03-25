@@ -8,7 +8,7 @@ import base64
 dotenv.load_dotenv()
 # Define constants for the load test  
 BATCHES = 10  # Number of batches  
-REQUESTS_PER_BATCH = 5  # Concurrent requests per batch  
+REQUESTS_PER_BATCH = 2  # Concurrent requests per batch  
 COMPUTE_COST_PER_HOUR = 4.78  # Cost per hour in dollars  
 
 # Set OpenAI's API key and API base to use vLLM's API server.

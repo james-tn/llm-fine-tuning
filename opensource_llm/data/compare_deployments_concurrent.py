@@ -9,6 +9,8 @@ from dotenv import load_dotenv
 from openai import AzureOpenAI  
 from azure.core.credentials import AzureKeyCredential  
 from concurrent.futures import ThreadPoolExecutor  
+#import retry
+from tenacity import retry, stop_after_attempt, wait_fixed
   
 # Load environment variables from .env file  
 load_dotenv()  
@@ -20,13 +22,16 @@ DEPLOYMENT1 = os.getenv("DEPLOYMENT1")  # Deployment without reasoning
 DEPLOYMENT2 = os.getenv("DEPLOYMENT2")  # Deployment with reasoning  
 AZURE_OPENAI_API_VERSION = os.getenv("AZURE_OPENAI_API_VERSION")  
 SQL_JUDGE_DEPLOYMENT = os.getenv("SQL_JUDGE_DEPLOYMENT")  # SQL judge deployment  
+SQL_JUDGE_ENDPOINT = os.getenv("SQL_JUDGE_ENDPOINT")  # SQL judge endpoint
+SQL_JUDGE_API_KEY = os.getenv("SQL_JUDGE_API_KEY")  # SQL judge key
+SQL_JUDGE_API_VERSION = os.getenv("SQL_JUDGE_API_VERSION")  # SQL judge API version
   
-def extract_sql_query(output):  
-    """Extracts the SQL query from the model's output."""  
-    sql_blocks = re.findall(r'sql\s+(.?)\s+```', output, re.DOTALL)  
-    if sql_blocks:  
-        return sql_blocks[-1].strip()  # Use the last SQL block  
-    return output  # No SQL block found  
+def extract_sql_query(output):
+    """Extracts the SQL query from the model's output."""
+    sql_blocks = re.findall(r'```sql\s+(.*?)\s+```', output, re.DOTALL)
+    if sql_blocks:
+        return sql_blocks[-1].strip()  # Use the last SQL block
+    return output  # No SQL block found
   
 def has_order_by(sql):  
     # Remove comments  
@@ -44,97 +49,81 @@ def has_order_by(sql):
     if ')' in after_order_by:  
         return False  
     return True  
-  
+@retry(stop=stop_after_attempt(3), wait=wait_fixed(2))  
 def compare_sql_results(predicted_sql, ground_truth_sql, question, db_path='northwind.db'):  
-    """Executes the predicted and ground truth SQL queries, normalizes their outcomes, and compares the results."""  
+    """Executes both SQL queries, compares results, and returns (passed_bool, explanation_str)."""  
+  
     def _normalize_structure(sql_query):  
         try:  
             with sqlite3.connect(db_path) as conn:  
                 cursor = conn.cursor()  
                 cursor.execute(sql_query)  
-  
-                # Get the number of columns and rows  
                 num_columns = len(cursor.description) if cursor.description else 0  
                 rows = cursor.fetchall()  
-                num_rows = len(rows)  
-  
-                # Normalize rows for comparison: convert items to strings (or None) and sort within each row  
-                normalized_rows = []  
-                for row in rows:  
-                    sorted_values = sorted(  
-                        [str(item) if item is not None else None for item in row],  
-                        key=lambda x: (x is None, x)  
-                    )  
-                    normalized_rows.append(tuple(sorted_values))  
-                return {'columns': num_columns, 'rows': num_rows, 'data': normalized_rows}  
+                normalized_rows = [  
+                    tuple(sorted(str(item) if item is not None else '' for item in row))  
+                    for row in rows  
+                ]  
+                return {'columns': num_columns, 'rows': len(rows), 'data': normalized_rows}  
         except sqlite3.Error:  
             return None  
   
-    # Execute both SQL queries  
     pred = _normalize_structure(predicted_sql)  
     truth = _normalize_structure(ground_truth_sql)  
   
-    # If either query fails to execute, we cannot reliably compare; return False.  
     if not pred or not truth:  
-        return False  
+        return (False, "One or both queries failed to execute.")  
   
-    # If the normalized results are exactly equal, return True without invoking the LLM.  
     if pred['data'] == truth['data']:  
-        return True  
+        return (True, "Exact match of query results.")  
   
-    # Determine if ordering matters based on the ground truth query  
     truth_has_order_by = has_order_by(ground_truth_sql)  
     if not truth_has_order_by:  
-        pred_data = sorted(pred['data'])  
-        truth_data = sorted(truth['data'])  
-    else:  
-        pred_data = pred['data']  
-        truth_data = truth['data']  
+        pred_sorted = sorted(pred['data'])  
+        truth_sorted = sorted(truth['data'])  
+        if pred_sorted == truth_sorted:  
+            return (True, "Results match after ignoring row order (no ORDER BY in ground truth).")  
   
-    if pred_data == truth_data:  
-        return True  
-  
-    # Otherwise, invoke the SQL judge LLM to decide.  
     prompt = f"""  
-    You are a SQL result evaluator tasked with determining whether a predicted SQL query returns a result set that essentially  
-    answers the user's question in the intended way, compared to the ground truth query.  
-    Even if the predicted query produces a result with different column names or ordering compared to the ground truth,  
-    if it correctly answers the question, then it should be considered correct.  
+    You are a SQL result evaluator tasked with determining whether a predicted SQL query returns a result set that essentially answers the user's question in the intended way, compared to the ground truth query.  
+    Even if the predicted query produces a result with different column names, ordering, aggregation levels, or additional irrelevant columns, if it correctly answers the question, it should be considered correct.  
   
     Question: {question}  
     Ground Truth SQL Query: {ground_truth_sql}  
-    Ground Truth Result:  
-    Number of Columns: {truth['columns']}  
-    Number of Rows: {truth['rows']}  
-    Data: {truth['data']}  
-  
+    Ground Truth Result: Number of Columns: {truth['columns']} Number of Rows: {truth['rows']} Data: {truth['data']}  
     Predicted SQL Query: {predicted_sql}  
-    Predicted Result:  
-    Number of Columns: {pred['columns']}  
-    Number of Rows: {pred['rows']}  
-    Data: {pred['data']}  
-  
-    Based solely on this information, does the predicted SQL query answer the question correctly?  
-    Please reply with a single word: True or False.  
+    Predicted Result: Number of Columns: {pred['columns']} Number of Rows: {pred['rows']} Data: {pred['data']}  
+      
+    Please reply with a single line starting with 'True' or 'False', followed by a colon and a brief explanation.  
+    Example: 'True: The predicted query correctly answers despite different column names.'  
     """.strip()  
   
     client = AzureOpenAI(  
-        azure_endpoint=AZURE_OPENAI_ENDPOINT,  
-        api_key=AZURE_OPENAI_API_KEY,  
-        api_version=AZURE_OPENAI_API_VERSION  
+        azure_endpoint=SQL_JUDGE_ENDPOINT,  
+        api_key=SQL_JUDGE_API_KEY,  
+        api_version=SQL_JUDGE_API_VERSION  
     )  
     response = client.chat.completions.create(  
         model=SQL_JUDGE_DEPLOYMENT,  
         messages=[  
-            {"role": "system", "content": "You are an expert SQL result judge."},  
+            {"role": "system", "content": "You evaluate SQL results to determine correctness."},  
             {"role": "user", "content": prompt}  
         ]  
     )  
-    judge_output = response.choices[0].message.content.strip().lower()  
   
-    # Expect the LLM response to be "true" or "false"  
-    return True if "true" in judge_output else False  
+    judge_response = response.choices[0].message.content.strip()  
+    if ':' in judge_response:  
+        verdict_part, explanation_part = judge_response.split(':', 1)  
+    else:  
+        verdict_part = judge_response  
+        explanation_part = "No explanation provided."  
   
+    verdict = verdict_part.strip().lower() == 'true'  
+    explanation = explanation_part.strip()  
+    return (verdict, explanation)  
+  
+
+@retry(stop=stop_after_attempt(3), wait=wait_fixed(2))  
 def query_openai_deployment(deployment_name, question, knowledge_graph_context):  
     """Uses the given deployment to query the API with the provided question and context."""  
     client = AzureOpenAI(  
@@ -175,60 +164,41 @@ def query_openai_deployment(deployment_name, question, knowledge_graph_context):
     return response.choices[0].message.content  
   
 def process_record(record, knowledge_graph_context):  
-    """Processes one test record by querying both deployments."""  
+    """Processes one test record and captures explanations."""  
     question = record.get("user", "")  
     ground_truth = record.get("sql_result", "")  
-  
-    # Start log with the question and ground truth query  
     row_log = {"Question": question, "Ground Truth Query": ground_truth}  
   
-    # Process both deployments in one pass  
     for dep in [DEPLOYMENT1, DEPLOYMENT2]:  
-        dep_label = "Deployment1" if dep == DEPLOYMENT1 else "Deployment2"  
-        is_reasoning = (dep == DEPLOYMENT2)  
-  
+        dep_label = "Deployment1" if dep == DEPLOYMENT1 else "Deployment2" 
+        predicted_query = None 
         try:  
             complete_response = query_openai_deployment(dep, question, knowledge_graph_context)  
-            error_msg = ""  
-        except Exception as e:  
-            complete_response = ""  
-            error_msg = f"Error during API call: {str(e)}"  
-  
-        if is_reasoning:  
-            # If using reasoning deployment, look for an explicit marker; if none, try parsing a SQL block.  
             if "###final_sql_query:" in complete_response:  
                 predicted_query = complete_response.split("###final_sql_query:")[-1].strip()  
             else:  
                 predicted_query = extract_sql_query(complete_response)  
-                if not predicted_query:  
-                    error_msg = "Cannot parse SQL query"  
-        else:  
-            predicted_query = complete_response.strip()  
   
-        # Compare predicted SQL with ground truth and capture detailed errors  
-        try:  
-            if predicted_query:  
-                passed = compare_sql_results(predicted_query, ground_truth, question)  
-                pass_fail = "Pass" if passed else "Fail"  
-                comparison_detail = "Predicted SQL matches ground truth sufficiently to answer the question." if passed else "Predicted SQL does not match the ground truth in terms of answering the question."  
-            else:  
-                pass_fail = "Fail"  
-                comparison_detail = "No predicted query provided."  
-        except Exception as ex:  
-            error_msg += f" Exception during comparison: {str(ex)}"  
+        except Exception as e:  
             pass_fail = "Fail"  
-            comparison_detail = error_msg  
+            comparison_detail = f"Error during evaluation: {str(e)}"  
+        if predicted_query:  
+            passed, explanation = compare_sql_results(predicted_query, ground_truth, question)  
+            pass_fail = "Pass" if passed else "Fail"  
+            comparison_detail = explanation  
+        else:  
+            pass_fail = "Fail"  
+            comparison_detail = "No predicted query provided."  
+
   
-        # Save details for this deployment in the log  
         row_log[f"{dep_label} Complete Response"] = complete_response  
         row_log[f"{dep_label} Predicted Query"] = predicted_query  
         row_log[f"{dep_label} Pass/Fail"] = pass_fail  
-        row_log[f"{dep_label} Error Message"] = error_msg  
         row_log[f"{dep_label} Comparison Details"] = comparison_detail  
   
     return row_log  
   
-def run_tests_and_log(test_data, knowledge_graph_context, output_file="detailed_query_results_v2.xlsx"):  
+def run_tests_and_log(test_data, knowledge_graph_context, output_file="detailed_query_results_v2.1.xlsx"):  
     """Runs through all test records, queries both deployments concurrently."""  
     log_entries = []  
   
