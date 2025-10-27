@@ -1,6 +1,7 @@
 import os  
 import json  
 import time  
+import sqlite3  
 from azure.ai.inference import ChatCompletionsClient  
 from azure.core.credentials import AzureKeyCredential  
 from concurrent.futures import ThreadPoolExecutor, as_completed  
@@ -17,11 +18,10 @@ def send_request(client, payload):
 def craft_prompt(question, knowledge_graph_context):  
     return f"""  
     You are an expert SQL query generator specialized in SQLITE. Use the following database schema and business context to answer the question below:  
-      
+  
     {knowledge_graph_context}  
   
     Question: {question}  
-  
     Output the SQL query in a ```sql``` block written in SQLITE syntax. End your response with ###END.  
     """  
   
@@ -50,9 +50,24 @@ def retry_request(client, payload, retries=3):
             time.sleep(10)  # Optional: Add a small delay between retries  
     return None  
   
+def execute_and_verify_sql(sql_query, db_path='northwind.db'):  
+    """  
+    Execute the generated SQL query and verify if it returns at least one row.  
+    """  
+    with sqlite3.connect(db_path) as conn:  
+        cursor = conn.cursor()  
+        try:  
+            cursor.execute(sql_query)  
+            result = cursor.fetchall()  
+            # Return True if at least one row is fetched  
+            return len(result) > 0  
+        except sqlite3.Error as e:  
+            print(f"SQL execution failed: {e}")  
+            return False  
+  
 def main():  
     # Load user questions and knowledge graph  
-    with open("questions_by_difficulty_v1.json", "r") as f:  
+    with open("questions_v2.json", "r") as f:  # Updated file name to remove "by_difficulty"  
         user_questions = json.load(f)  
   
     with open("analytic_graph.json", "r") as f:  
@@ -70,22 +85,12 @@ def main():
         credential=AzureKeyCredential(api_key),  
     )  
   
-    # Extract all questions with metadata  
-    all_questions_metadata = []  
+    # Extract all questions  
     questions = user_questions["questions"]  
-    difficulties = user_questions["difficulty"]  
   
-    # Pair questions with their corresponding difficulty levels  
-    for i, question in enumerate(questions):  
-        difficulty = difficulties[i] if i < len(difficulties) else "unknown"  # Default to "unknown" if difficulty is missing  
-        all_questions_metadata.append({  
-            "difficulty": difficulty,  
-            "question": question  
-        })  
-  
-    # Group questions into batches of up to 20  
-    batch_size = 20  
-    question_batches = [all_questions_metadata[i:i + batch_size] for i in range(0, len(all_questions_metadata), batch_size)]  
+    # Group questions into batches of up to 5  
+    batch_size = 3  
+    question_batches = [questions[i:i + batch_size] for i in range(0, len(questions), batch_size)]  
   
     results = []  
   
@@ -93,10 +98,7 @@ def main():
     for batch in question_batches:  
         futures = []  
         with ThreadPoolExecutor(max_workers=len(batch)) as executor:  
-            for question_metadata in batch:  
-                question = question_metadata["question"]  
-                difficulty = question_metadata["difficulty"]  
-  
+            for question in batch:  
                 # Create the prompt for the question  
                 prompt = craft_prompt(question, knowledge_graph_context)  
   
@@ -109,38 +111,41 @@ def main():
   
                 # Submit the request to the LLM  
                 future = executor.submit(retry_request, client, payload, retries=3)  
-                futures.append((question_metadata, future))  
+                futures.append((question, future))  
   
             # Collect responses  
-            for question_metadata, future in futures:  
+            for question, future in futures:  
                 try:  
                     response = future.result()  
                     if response:  # Check if the response is not None (successful)  
                         response_content = response.choices[0].message.content  
                         reasoning, sql_query = process_response(response_content)  
-                        if len(sql_query) and len(reasoning) > 0:  
-                            # Print out question, reasoning, and SQL query  
-                            print(f"Question: {question_metadata['question']}")  
-                            print(f"Reasoning: {reasoning}")  
-                            print(f"SQL Query: {sql_query}")  
-                            print(f"Results: {len(results)}")  
-                            results.append({  
-                                "difficulty": question_metadata["difficulty"],  
-                                "user": question_metadata["question"],  
-                                "assistant_reasoning": reasoning,  
-                                "sql_result": sql_query  
-                            })  
+                        if len(sql_query) > 0 and len(reasoning) > 0:  
+                            # Verify the SQL query  
+                            if execute_and_verify_sql(sql_query):  
+                                # Print out question, reasoning, and SQL query  
+                                print(f"Question: {question}")  
+                                print(f"Reasoning: {reasoning}")  
+                                print(f"SQL Query: {sql_query}")  
+                                print(f"Results: {len(results)}")  
+                                results.append({  
+                                    "user": question,  
+                                    "assistant_reasoning": reasoning,  
+                                    "sql_result": sql_query  
+                                })  
+                            else:  
+                                print(f"SQL query did not return any rows or failed: {sql_query}")  
                     else:  
-                        print(f"Failed to process question '{question_metadata['question']}' after retries.")  
+                        print(f"Failed to process question '{question}' after retries.")  
                 except Exception as exc:  
-                    print(f"Final exception for question '{question_metadata['question']}': {exc}")  
+                    print(f"Final exception for question '{question}': {exc}")  
   
     # Save results to JSONL file  
-    with open("sql_result_v2.jsonl", "w") as f:  
+    with open("sql_result__test_v2.jsonl", "w") as f:  
         for result in results:  
             f.write(json.dumps(result) + "\n")  
   
-    print("Results saved to sql_result_v2.jsonl")  
+    print("Results saved to sql_result__test_v2.jsonl")  
   
 if __name__ == "__main__":  
     main()  

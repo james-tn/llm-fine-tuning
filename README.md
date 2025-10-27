@@ -20,7 +20,6 @@ This section provides examples and best practices for fine-tuning OpenAI models 
 - **Function Calling**: Fine-tuning for tasks that require structured outputs or API integrations.  
 - **Python Analytic**: Adapting models for advanced analytics and Python-based tasks.  
 - **SQL Generation**: Training models to generate SQL queries from natural language inputs.  
-- **Data Preparation**: Tools and scripts for preparing datasets for fine-tuning.  
   
 Explore the details in the [Azure OpenAI Section](azureopenai).  
   
